@@ -269,6 +269,38 @@ async function ejecutarSeed() {
     await inscService.asociarTorneo(inscC._id, torneo._id);
     await inscService.cambiarEstado(inscC._id, "aceptada", { rol: "admin" });
 
+    // A-59 (coordinador Pedro Gonzalez) recibe inscripciones aceptadas en varias
+    // categorias para que pueda agregar estudiantes a mas de una division.
+    const inscA59Minis = await inscService.crear(
+      {
+        establecimiento: idsColegios["A-59"],
+        actividad: idsActividades.Futbol,
+        division: "MINIS",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.cambiarEstado(inscA59Minis._id, "aceptada", { rol: "admin" });
+
+    const inscA59Juvenil = await inscService.crear(
+      {
+        establecimiento: idsColegios["A-59"],
+        actividad: idsActividades.Futbol,
+        division: "JUVENIL",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.cambiarEstado(inscA59Juvenil._id, "aceptada", { rol: "admin" });
+
+    const inscA59Basquet = await inscService.crear(
+      {
+        establecimiento: idsColegios["A-59"],
+        actividad: idsActividades.Basquetbol,
+        division: "JUVENIL",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.cambiarEstado(inscA59Basquet._id, "aceptada", { rol: "admin" });
+
     console.log("[SEED] Inscripciones y alumnos de ejemplo creados");
     void coordB112;
   }

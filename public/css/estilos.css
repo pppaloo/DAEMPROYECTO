@@ -1,7 +1,9 @@
 :root {
-  --primario: #1a4780;
-  --primario-oscuro: #12305c;
-  --acento: #e8a33d;
+  --primario: #910a25;
+  --primario-oscuro: #5c0717;
+  --acento: #f0af4d;
+  --azul: #095ab1;
+  --azul-oscuro: #001675;
   --fondo: #f3f5f9;
   --borde: #d7dce6;
   --texto: #223049;
@@ -9,7 +11,7 @@
   --warn: #c9881a;
   --err: #d24d3d;
   --blanco: #ffffff;
-  --burdeo: #7c1f3a;
+  --burdeo: #910a25;
 }
 
 * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -79,11 +81,11 @@ body {
 body.menu-abierto .overlay-menu { opacity: 1; }
 .usuario-actual { margin: 14px 0; font-size: 12px; line-height: 1.5; background: rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; }
 .usuario-actual strong { display: block; font-size: 13px; }
-.badge-rol { display: inline-block; margin-top: 4px; background: var(--acento); color: #12305c; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+.badge-rol { display: inline-block; margin-top: 4px; background: var(--acento); color: var(--primario-oscuro); font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
 #nav { flex: 1; }
 #nav button {
   display: block; width: 100%; text-align: left; background: transparent; border: none;
-  color: #dfe6f2; padding: 10px 12px; margin: 4px 0; border-radius: 8px; font-size: 14px; cursor: pointer;
+  color: rgba(255,255,255,0.85); padding: 10px 12px; margin: 4px 0; border-radius: 8px; font-size: 14px; cursor: pointer;
 }
 #nav button:hover, #nav button.activo { background: rgba(255,255,255,0.15); color: #fff; }
 .btn-salir { margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 8px; cursor: pointer; }
@@ -104,7 +106,7 @@ body.menu-abierto .overlay-menu { opacity: 1; }
   background: var(--blanco); border: 1px solid var(--borde); color: var(--primario);
   padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
 }
-.btn:hover { background: #eef2f9; }
+.btn:hover { background: #f8efed; }
 .btn-primario2 { background: var(--primario); color: #fff; border: 1px solid var(--primario); }
 .btn-primario2:hover { background: var(--primario-oscuro); }
 .btn-ok { background: var(--ok); color: #fff; }
@@ -113,7 +115,7 @@ body.menu-abierto .overlay-menu { opacity: 1; }
 
 table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
 th, td { padding: 9px 12px; border-bottom: 1px solid var(--borde); text-align: left; font-size: 13px; }
-th { background: #eef2f9; color: var(--primario); font-weight: 700; }
+th { background: #f8efed; color: var(--primario); font-weight: 700; }
 tr:hover td { background: #f7f9fc; }
 
 .estado { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
@@ -125,7 +127,7 @@ tr:hover td { background: #f7f9fc; }
 .est-postergado { background: #e3f2fd; color: #1976d2; }
 .est-cancelado { background: #fbe4e1; color: var(--err); }
 .est-finalizado { background: #eceef2; color: #5a6478; }
-.mensaje { background: #eef4ff; color: var(--primario); border: 1px solid #c9d8f2; padding: 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
+.mensaje { background: #fdeeed; color: var(--primario); border: 1px solid #f2c6c0; padding: 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
 .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 @media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
 h2.pagina { color: var(--primario); margin-bottom: 16px; }
@@ -149,7 +151,7 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
 .tarjeta-tor strong { display: block; font-size: 14px; }
 .badge-estado-tor { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
 .cambio-torneo { border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; }
-.cambio-tipo { background: var(--acento); color: #12305c; }
+.cambio-tipo { background: var(--acento); color: var(--primario-oscuro); }
 .cambio-nuevo { background: var(--ok); color: #fff; }
 
 /* ---------- Agenda de torneos (admin) ---------- */
@@ -187,31 +189,68 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
 }
 .item-agenda strong { display: block; color: var(--primario); }
 
-/* ---------- Mapa del torneo (bracket) ---------- */
-.bracket {
-  display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start;
+/* ---------- Mapa del torneo (bracket estilo Copa del Mundo) ---------- */
+.world-cup {
+  position: relative;
+  background: linear-gradient(135deg, #6b1524 0%, #4a0d1e 55%, #2b0710 100%);
+  border-radius: 14px;
+  padding: 16px 14px 14px;
+  overflow-x: auto;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.25);
 }
-.bracket-col { min-width: 220px; flex: 1 1 220px; }
-.bracket-ronda {
-  background: var(--burdeo); color: #fff; font-weight: 700; font-size: 13px;
-  text-align: center; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px;
+.world-cup-titulo {
+  text-align: center; color: var(--acento); font-weight: 800;
+  letter-spacing: 4px; font-size: 15px; text-transform: uppercase; margin-bottom: 2px;
 }
-.bracket-cruces { display: flex; flex-direction: column; gap: 14px; }
-.match-card {
-  background: #fff; border: 1px solid var(--borde); border-radius: 10px;
-  padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+.world-cup-sub { text-align: center; color: rgba(255,255,255,0.55); font-size: 12px; margin: 0 0 6px; }
+.world-cup-canvas { position: relative; margin: 0 auto; }
+.wc-col { position: absolute; top: 0; }
+.wc-ronda-nombre {
+  text-align: center; color: var(--acento); font-weight: 700; text-transform: uppercase;
+  font-size: 10px; letter-spacing: 2px;
 }
-.match-card.match-bye { border-style: dashed; background: #fafafa; }
-.match-cabecera { font-size: 11px; color: var(--texto); opacity: 0.8; margin-bottom: 6px; }
-.match-equipo {
-  display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 7px;
-  background: #f3f5f7; font-weight: 600; font-size: 13px;
+.wc-card {
+  position: absolute; background: #fff; border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.3); overflow: hidden;
 }
-.match-equipo.ganador { background: #e7f3ec; color: #1f7a44; border: 1px solid #bcdcc9; }
-.match-equipo.libre { color: #9aa3af; font-weight: 400; font-style: italic; }
-.match-puntaje { margin-left: auto; background: var(--primario); color: #fff; border-radius: 6px; padding: 0 7px; font-size: 12px; }
-.match-sep { text-align: center; font-size: 10px; color: #9aa3af; margin: 3px 0; }
-.match-acciones { margin-top: 8px; }
+.wc-fila {
+  display: flex; align-items: center; gap: 6px; padding: 7px 10px;
+  font-size: 12px; font-weight: 600; color: var(--texto);
+  white-space: nowrap; overflow: hidden;
+}
+.wc-fila.ganador {
+  background: linear-gradient(135deg, #ffd97a, #f0b429);
+  color: #4a3000; font-weight: 800;
+}
+.wc-fila.libre { color: #9aa3af; font-style: italic; font-weight: 400; }
+.wc-nombre { flex: 1; overflow: hidden; text-overflow: ellipsis; }
+.wc-puntaje { background: #eceef2; border-radius: 5px; padding: 1px 7px; font-size: 11px; font-weight: 700; }
+.wc-fila.ganador .wc-puntaje { background: rgba(0,0,0,0.15); color: #4a3000; }
+.wc-vs {
+  text-align: center; font-size: 8px; font-weight: 800; letter-spacing: 1.5px;
+  color: #9aa3af; line-height: 1; padding: 1px 0;
+}
+.wc-reg {
+  border: 1px solid var(--primario); color: var(--primario); background: #fff;
+  border-radius: 6px; font-size: 11px; font-weight: 700; padding: 3px 8px;
+  cursor: pointer; margin: 5px 8px 7px;
+}
+.wc-reg:hover { background: var(--primario); color: #fff; }
+.wc-form { padding: 0 8px 8px; display: flex; gap: 5px; align-items: center; }
+.wc-form input { width: 46px; padding: 4px 5px; border: 1px solid var(--borde); border-radius: 5px; font-size: 13px; }
+.wc-campeon {
+  position: absolute;
+  background: linear-gradient(160deg, #ffd97a, #e0a91f); color: #4a3000;
+  border-radius: 10px; box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+  padding: 8px 10px; text-align: center;
+}
+.wc-campeon .wc-cam-titulo {
+  font-size: 9px; font-weight: 800; letter-spacing: 3px; text-transform: uppercase; opacity: 0.75;
+}
+.wc-campeon .wc-cam-nombre { font-weight: 800; font-size: 13px; margin-top: 2px; }
+.world-cup-svg {
+  position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; z-index: 2;
+}
 
 /* ---------- Responsive (movil): menu plegable ---------- */
 @media (max-width: 768px) {
@@ -225,6 +264,20 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
   body.menu-abierto .sidebar { transform: translateX(0); }
   body.menu-abierto { overflow: hidden; }
   body.menu-abierto .overlay-menu { display: block; }
-  #contenido { padding: 16px; padding-top: 70px; }
+  #contenido { padding: 14px; padding-top: 72px; overflow-x: hidden; }
   .encabezado { flex-direction: column; align-items: flex-start; gap: 10px; }
+
+  /* Formularios: evita el zoom automatico de iOS al enfocar */
+  input, select, textarea, button { font-size: 16px; }
+
+  /* Tablas: dejan de aplastarse y se desplazan horizontalmente */
+  table { display: block; width: 100%; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+  th, td { font-size: 12px; padding: 8px 10px; }
+
+  .stat { width: 100%; margin: 0 0 8px; }
+  .login-caja { padding: 24px 18px; }
+  .cal-celda { height: 38px; }
+  .grid-2, .stats-fila { gap: 10px; }
+  h2.pagina { font-size: 20px; }
+  .world-cup { padding: 12px 8px; }
 }

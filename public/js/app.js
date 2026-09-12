@@ -408,13 +408,22 @@ async function panelAdminTorneos() {
   });
 }
 
-// Mapa (bracket) del torneo: rondas, cruces, puntajes y ganadores.
+// Mapa (bracket) del torneo estilo Copa del Mundo: llaves conectadas en
+// piramide, puntajes, ganadores que avanzan y caja del campeon.
 const nombreRonda = (cantidadLlaves) => {
   if (cantidadLlaves <= 1) return "Final";
   if (cantidadLlaves === 2) return "Semifinal";
   if (cantidadLlaves === 4) return "Cuartos de Final";
   if (cantidadLlaves === 8) return "Octavos de Final";
   return `Ronda (${cantidadLlaves} cruces)`;
+};
+
+const WC = { UH: 56, GAP: 36, CARD_W: 150, PAD: 14, COL_W: 178, LBL: 26, ROW_A: 14, ROW_B: 40 };
+
+const wcIdxGanador = (l) => {
+  if (!l.ganador || !l.equipos || !l.equipos.length) return -1;
+  const g = l.ganador._id || l.ganador;
+  return String(l.equipos[0]._id || l.equipos[0]) === String(g) ? 0 : 1;
 };
 
 async function mostrarBracket(torneoId, div) {
@@ -427,41 +436,110 @@ async function mostrarBracket(torneoId, div) {
   const porNivel = {};
   llaves.forEach((l) => { (porNivel[l.nivel] = porNivel[l.nivel] || []).push(l); });
   const niveles = Object.keys(porNivel).map(Number).sort((a, b) => a - b);
+  const R = niveles.length;
 
-  const cardEquipo = (equipo, idx, llave) => {
-    const idEquipo = equipo ? (equipo._id || equipo) : null;
-    const gana = llave.ganador && idEquipo && String(idEquipo) === String(llave.ganador._id || llave.ganador);
-    const puntaje = llave.puntajeA !== null && llave.puntajeA !== undefined
-      ? `<span class="match-puntaje">${idx === 0 ? llave.puntajeA : llave.puntajeB}</span>` : "";
-    if (!equipo) return `<div class="match-equipo libre">Por definir</div>`;
-    return `<div class="match-equipo ${gana ? "ganador" : ""}">${esc(equipo.nombre || "Libre")}${puntaje}${gana ? "<span class='badge-rol'>GANA</span>" : ""}</div>`;
+  const byId = {};
+  llaves.forEach((l) => { byId[String(l._id)] = l; });
+
+  // Posiciones verticales: las hojas apiladas y cada cruce centrado entre sus padres.
+  let cursor = 0;
+  const nivel1 = (porNivel[niveles[0]] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+  nivel1.forEach((lv) => {
+    lv._top = cursor; lv._h = WC.UH; cursor += WC.UH + WC.GAP;
+  });
+  const canvasH = Math.max(cursor - WC.GAP, WC.UH);
+
+  niveles.slice(1).forEach((n) => {
+    (porNivel[n] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0)).forEach((lv) => {
+      const padres = (lv.hijos || []).map((id) => byId[String(id)]).filter(Boolean);
+      const cy = padres.length
+        ? padres.reduce((s, p) => s + (p._top + p._h / 2), 0) / padres.length
+        : WC.UH / 2;
+      lv._h = WC.UH; lv._top = cy - WC.UH / 2;
+    });
+  });
+
+  const finalLv = porNivel[niveles[R - 1]][0];
+  const totalW = R * WC.COL_W + WC.PAD + WC.CARD_W;
+  const hTotal = WC.LBL + canvasH;
+
+  const filaEquipo = (l, equipo, idxRow) => {
+    if (!equipo) return `<div class="wc-fila wc-libre"><span class="wc-nombre">Por definir</span></div>`;
+    const idEq = equipo._id || equipo;
+    const gana = wcIdxGanador(l) === idxRow;
+    const pts = l.puntajeA !== null && l.puntajeA !== undefined
+      ? `<span class="wc-puntaje">${idxRow === 0 ? l.puntajeA : l.puntajeB}</span>` : "";
+    return `<div class="wc-fila ${gana ? "ganador" : ""}"><span class="wc-nombre">${esc(equipo.nombre || "Libre")}</span>${pts}</div>`;
   };
 
-  const columnas = niveles.map((n) => {
-    const llavesNivel = porNivel[n];
-    const cruces = llavesNivel.map((l) => {
+  const columnas = niveles.map((n, idx) => {
+    const lvl = (porNivel[n] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
+    const cards = lvl.map((l) => {
       const a = l.equipos && l.equipos[0] ? l.equipos[0] : null;
       const b = l.equipos && l.equipos[1] ? l.equipos[1] : null;
-      const jugable = !l.bye && l.estado === "pendiente" && l.equipos && l.equipos.length === 2;
-      return `<div class="match-card ${l.bye ? "match-bye" : ""}">
-        <div class="match-cabecera">${esc(l.grupo)} <span class="muted">· ${esc(l.division)}</span> <span class="estado est-${esc(l.estado)}">${esc(l.estado)}</span></div>
-        ${cardEquipo(a, 0, l)}
-        <div class="match-sep">vs</div>
-        ${cardEquipo(b, 1, l)}
-        ${jugable ? `<div class="match-acciones"><button class="btn btn-ok btn-mini" data-llave="${l._id}">Registrar Resultado</button>
-          <div id="form-llave-${l._id}" class="oculta">
-            <input id="pa-${l._id}" style="width:64px" placeholder="A">&nbsp;:&nbsp;<input id="pb-${l._id}" style="width:64px" placeholder="B">
-            <button class="btn btn-ok btn-mini" data-guardar-llave="${l._id}">Guardar</button>
-          </div></div>` : ""}
+      const jugable = !l.bye && l.estado === "pendiente" && a && b;
+      return `<div class="wc-card" style="left:${WC.PAD}px;top:${WC.LBL + Math.round(l._top)}px;height:${WC.UH}px;width:${WC.CARD_W}px">
+        ${filaEquipo(l, a, 0)}
+        <div class="wc-vs">${l.bye ? "AVANZA DIRECTO" : "VS"}</div>
+        ${filaEquipo(l, b, 1)}
+        ${jugable ? `<button class="wc-reg" data-llave="${l._id}">Registrar Resultado</button>
+          <div class="wc-form oculta" id="form-llave-${l._id}">
+            <input id="pa-${l._id}" placeholder="A"><input id="pb-${l._id}" placeholder="B">
+            <button class="wc-reg" data-guardar-llave="${l._id}">Guardar</button>
+          </div>` : ""}
       </div>`;
     }).join("");
-    return `<div class="bracket-col"><div class="bracket-ronda">${nombreRonda(llavesNivel.length)}</div><div class="bracket-cruces">${cruces}</div></div>`;
+    return `<div class="wc-col" style="left:${idx * WC.COL_W}px;width:${WC.COL_W}px;height:${hTotal}px">
+      <div class="wc-ronda-nombre">${nombreRonda(lvl.length)}</div>${cards}</div>`;
   }).join("");
 
-  div.innerHTML = `<div class="bracket">${columnas}</div>`;
+  // Lineas conectoras (las traza un SVG sobre el lienzo).
+  const tramos = [];
+  niveles.slice(1).forEach((n) => {
+    const idxCol = niveles.indexOf(n);
+    const xBorde = idxCol * WC.COL_W;
+    const xEntrada = xBorde + WC.PAD;
+    (porNivel[n] || []).forEach((lv) => {
+      const padres = (lv.hijos || []).map((id) => byId[String(id)]).filter(Boolean);
+      if (!padres.length) return;
+      const ys = padres.map((p) => {
+        const y = WC.LBL + p._top + (wcIdxGanador(p) === 1 ? WC.ROW_B : WC.ROW_A);
+        tramos.push(`M ${(p.nivel - 1) * WC.COL_W + WC.PAD + WC.CARD_W} ${y} H ${xBorde}`);
+        return y;
+      });
+      if (ys.length === 2) {
+        tramos.push(`M ${xBorde} ${Math.min(...ys)} V ${Math.max(...ys)}`);
+        tramos.push(`M ${xBorde} ${WC.LBL + lv._top + lv._h / 2} H ${xEntrada}`);
+      } else {
+        tramos.push(`M ${xBorde} ${ys[0]} H ${xEntrada}`);
+      }
+    });
+  });
+  // Linea del campeon: desde la final hasta su caja dorada.
+  if (finalLv) {
+    const fY = WC.LBL + finalLv._top + (wcIdxGanador(finalLv) === 1 ? WC.ROW_B : WC.ROW_A);
+    tramos.push(`M ${(R - 1) * WC.COL_W + WC.PAD + WC.CARD_W} ${fY} H ${R * WC.COL_W + WC.PAD}`);
+  }
+
+  const champ = `<div class="wc-campeon" style="left:${R * WC.COL_W + WC.PAD}px;top:${WC.LBL + Math.round(finalLv._top)}px;width:${WC.CARD_W}px">
+    <div class="wc-cam-titulo">Campeon</div>
+    <div class="wc-cam-nombre">${finalLv.ganador && finalLv.ganador.nombre ? esc(finalLv.ganador.nombre) : "Por definir"}</div>
+  </div>`;
+
+  div.innerHTML = `<div class="world-cup">
+    <div class="world-cup-titulo">Mapa del torneo</div>
+    <div class="world-cup-sub">Eliminacion directa · el ganador de cada cruce avanza de ronda</div>
+    <div class="world-cup-canvas" style="width:${totalW}px;height:${hTotal}px">
+      ${columnas}
+      ${champ}
+      <svg class="world-cup-svg" width="${totalW}" height="${hTotal}" viewBox="0 0 ${totalW} ${hTotal}">
+        <path d="${tramos.join(" ")}" fill="none" stroke="#e8a33d" stroke-width="2"/>
+      </svg>
+    </div>
+  </div>`;
 
   div.querySelectorAll("[data-llave]").forEach((bb) => {
-    bb.onclick = () => $(`#form-llave-${bb.dataset.llave}`).classList.toggle("oculta");
+    bb.onclick = () => { bb.classList.toggle("oculta"); const f = $(`#form-llave-${bb.dataset.llave}`); if (f) f.classList.toggle("oculta"); };
   });
   div.querySelectorAll("[data-guardar-llave]").forEach((bb) => {
     bb.onclick = async () => {
@@ -821,7 +899,10 @@ async function panelCoordSolicitudesImpl() {
      <button class="btn btn-primario2" id="btn-ver-alumnos">Ver Alumnos</button></div>
      <div id="agregar-alumno-box" class="oculta tarjeta">
        <div class="grid-2">
-         <div class="campo"><label>Inscripcion (aceptada)</label><select id="al-ins">${encAlumnos.filter((i) => i.estado === "aceptada").map((i) => `<option value="${i._id}">${esc(i.actividad ? i.actividad.nombre : "")} - ${esc(i.division)}</option>`).join("")}</select></div>
+         <div class="campo"><label>Inscripcion (aceptada)</label><select id="al-ins">${(function () {
+           const aceptadas = encAlumnos.filter((i) => i.estado === "aceptada").sort((a, b) => (a.actividad?.nombre || "").localeCompare(b.actividad?.nombre || "") || (a.division || "").localeCompare(b.division || ""));
+           return aceptadas.length ? aceptadas.map((i) => `<option value="${i._id}">${esc(i.actividad ? i.actividad.nombre : "")} - ${esc(i.division)}</option>`).join("") : `<option value="">Sin inscripciones aceptadas</option>`;
+         })()}</select></div>
          <div class="campo"><label>RUT alumno</label><input id="al-rut"></div>
          <div class="campo"><label>Nombre</label><input id="al-nombre"></div>
          <div class="campo"><label>Genero</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
