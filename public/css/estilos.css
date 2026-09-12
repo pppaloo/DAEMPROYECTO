@@ -1,0 +1,230 @@
+:root {
+  --primario: #1a4780;
+  --primario-oscuro: #12305c;
+  --acento: #e8a33d;
+  --fondo: #f3f5f9;
+  --borde: #d7dce6;
+  --texto: #223049;
+  --ok: #2e9e5b;
+  --warn: #c9881a;
+  --err: #d24d3d;
+  --blanco: #ffffff;
+  --burdeo: #7c1f3a;
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+  color: var(--texto);
+  background: var(--fondo);
+}
+
+.oculta { display: none !important; }
+
+/* ---------- Login ---------- */
+.vista { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+.login-caja {
+  background: var(--blanco);
+  width: 100%;
+  max-width: 400px;
+  padding: 32px;
+  border-radius: 12px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.12);
+}
+.login-logo { text-align: center; margin-bottom: 24px; }
+.logo-icono {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 64px; height: 64px; border-radius: 50%;
+  background: var(--primario); color: #fff; font-size: 26px; font-weight: 700;
+}
+.login-logo h1 { margin-top: 10px; color: var(--primario); letter-spacing: 2px; }
+.login-logo p { color: #6b7590; font-size: 13px; margin-top: 4px; }
+.login-caja form label { display: block; font-size: 13px; margin: 12px 0 4px; font-weight: 600; }
+.login-caja form input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px;
+}
+.login-caja form input:focus { outline: 2px solid var(--primario); border-color: transparent; }
+.login-caja .btn-primario {
+  width: 100%; margin-top: 18px; padding: 12px; background: var(--primario); color: #fff;
+  border: none; border-radius: 8px; font-size: 15px; font-weight: 600; cursor: pointer;
+}
+.login-caja .btn-primario:hover { background: var(--primario-oscuro); }
+.login-hint { margin-top: 20px; font-size: 12px; color: #6b7590; background: #f0f3f9; border-radius: 8px; padding: 12px; line-height: 1.7; }
+.error { color: var(--err); font-size: 13px; margin-top: 8px; }
+
+/* ---------- Dashboard layout ---------- */
+#app-dashboard { display: flex; min-height: 100vh; }
+.sidebar {
+  width: 240px; background: var(--primario-oscuro); color: #fff;
+  padding: 18px 14px; display: flex; flex-direction: column; flex-shrink: 0;
+}
+.sidebar-cabecera { display: flex; align-items: center; justify-content: space-between; }
+.sidebar-logo { font-size: 24px; font-weight: 800; letter-spacing: 2px; text-align: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+.btn-menu {
+  display: none; position: fixed; top: 12px; left: 12px; z-index: 60;
+  flex-direction: column; justify-content: center; align-items: center; gap: 5px;
+  width: 44px; height: 44px; background: var(--primario); color: #fff;
+  border: none; border-radius: 10px; cursor: pointer; box-shadow: 0 3px 10px rgba(0,0,0,0.25);
+}
+.btn-menu .barra { display: block; width: 22px; height: 3px; background: #fff; border-radius: 2px; }
+.btn-cerrar-menu {
+  display: none; background: transparent; color: #fff; border: none;
+  font-size: 30px; line-height: 1; cursor: pointer; padding: 0 4px;
+}
+.overlay-menu {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  z-index: 40; opacity: 0; transition: opacity 0.2s ease;
+}
+body.menu-abierto .overlay-menu { opacity: 1; }
+.usuario-actual { margin: 14px 0; font-size: 12px; line-height: 1.5; background: rgba(255,255,255,0.08); border-radius: 8px; padding: 10px; }
+.usuario-actual strong { display: block; font-size: 13px; }
+.badge-rol { display: inline-block; margin-top: 4px; background: var(--acento); color: #12305c; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 700; }
+#nav { flex: 1; }
+#nav button {
+  display: block; width: 100%; text-align: left; background: transparent; border: none;
+  color: #dfe6f2; padding: 10px 12px; margin: 4px 0; border-radius: 8px; font-size: 14px; cursor: pointer;
+}
+#nav button:hover, #nav button.activo { background: rgba(255,255,255,0.15); color: #fff; }
+.btn-salir { margin-top: 12px; padding: 10px; background: rgba(255,255,255,0.12); color: #fff; border: none; border-radius: 8px; cursor: pointer; }
+
+/* ---------- Contenido ---------- */
+#contenido { flex: 1; padding: 24px 28px; overflow: auto; }
+.seccion { margin-bottom: 18px; display: flex; gap: 10px; flex-wrap: wrap; }
+.tarjeta { background: var(--blanco); border: 1px solid var(--borde); border-radius: 10px; padding: 16px 18px; margin-bottom: 14px; }
+.tarjeta h3 { margin-bottom: 8px; color: var(--primario); }
+.campo { margin: 10px 0; }
+.campo label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+.campo input, .campo select, .campo textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px;
+}
+.campo textarea { min-height: 60px; }
+.campo.fila { display: inline-flex; gap: 10px; }
+.btn {
+  background: var(--blanco); border: 1px solid var(--borde); color: var(--primario);
+  padding: 8px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; font-weight: 600;
+}
+.btn:hover { background: #eef2f9; }
+.btn-primario2 { background: var(--primario); color: #fff; border: 1px solid var(--primario); }
+.btn-primario2:hover { background: var(--primario-oscuro); }
+.btn-ok { background: var(--ok); color: #fff; }
+.btn-err2 { background: var(--err); color: #fff; }
+.btn-mini { padding: 4px 9px; font-size: 12px; }
+
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 8px; overflow: hidden; }
+th, td { padding: 9px 12px; border-bottom: 1px solid var(--borde); text-align: left; font-size: 13px; }
+th { background: #eef2f9; color: var(--primario); font-weight: 700; }
+tr:hover td { background: #f7f9fc; }
+
+.estado { padding: 3px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.est-aceptada, .est-aprobada, .est-cumple, .est-en_curso { background: #e2f4e9; color: var(--ok); }
+.est-rechazada, .est-no_cumple { background: #fbe4e1; color: var(--err); }
+.est-en_proceso, .est-regular, .est-inscripciones { background: #fff3d9; color: var(--warn); }
+.est-activo, .est-en_curso { background: #e2f4e9; color: var(--ok); }
+.est-pausado { background: #fff3d9; color: var(--warn); }
+.est-postergado { background: #e3f2fd; color: #1976d2; }
+.est-cancelado { background: #fbe4e1; color: var(--err); }
+.est-finalizado { background: #eceef2; color: #5a6478; }
+.mensaje { background: #eef4ff; color: var(--primario); border: 1px solid #c9d8f2; padding: 12px; border-radius: 8px; margin: 10px 0; font-size: 14px; }
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+@media (max-width: 900px) { .grid-2 { grid-template-columns: 1fr; } }
+h2.pagina { color: var(--primario); margin-bottom: 16px; }
+.muted { color: #6b7590; font-size: 13px; }
+.encabezado { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+.stat { display: inline-block; background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 14px 18px; margin: 0 10px 10px 0; }
+.stat .num { font-size: 26px; font-weight: 800; color: var(--primario); }
+.stat .lbl { font-size: 12px; color: #6b7590; }
+
+/* ---------- Dashboard torneos en curso (admin) ---------- */
+.stats-fila { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
+.stats-fila .stat { margin: 0; }
+.subtitulo-seccion { color: var(--primario); margin: 20px 0 10px; font-size: 17px; }
+.dashboard-torneos { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+@media (max-width: 900px) { .dashboard-torneos { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 560px) { .dashboard-torneos { grid-template-columns: 1fr; } }
+.col-torneos { background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 14px; }
+.encabezado-torneo { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.count-tor { font-size: 22px; font-weight: 800; color: var(--primario); }
+.tarjeta-tor { background: var(--fondo); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.tarjeta-tor strong { display: block; font-size: 14px; }
+.badge-estado-tor { display: inline-block; font-size: 12px; font-weight: 700; padding: 3px 12px; border-radius: 20px; }
+.cambio-torneo { border: 1px solid var(--borde); border-radius: 8px; padding: 10px 12px; }
+.cambio-tipo { background: var(--acento); color: #12305c; }
+.cambio-nuevo { background: var(--ok); color: #fff; }
+
+/* ---------- Agenda de torneos (admin) ---------- */
+.agenda-layout { display: grid; grid-template-columns: 380px 1fr; gap: 16px; }
+@media (max-width: 900px) { .agenda-layout { grid-template-columns: 1fr; } }
+.panel-calendario {
+  background: var(--burdeo); color: #fff; padding: 16px; border-radius: 12px; height: fit-content;
+}
+.cal-nombre { text-align: center; font-size: 16px; font-weight: 700; margin-bottom: 10px; letter-spacing: 1px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-dias { margin-bottom: 4px; }
+.cal-dia-nombre { text-align: center; font-size: 11px; font-weight: 700; opacity: 0.85; padding: 4px 0; }
+.cal-celda {
+  position: relative; height: 44px; border-radius: 8px; display: flex; align-items: center;
+  justify-content: center; cursor: pointer; transition: background 0.15s ease; background: rgba(255,255,255,0.06);
+}
+.cal-celda:hover { background: rgba(255,255,255,0.18); }
+.cal-celda.vacio { background: transparent; cursor: default; }
+.cal-celda.hoy { background: var(--burdeo); border: 2px solid #fff; font-weight: 800; }
+.cal-celda.seleccionado { background: #fff; color: var(--burdeo); font-weight: 800; }
+.cal-num { font-size: 13px; }
+.punto-torneo {
+  position: absolute; bottom: 5px; left: 50%; transform: translateX(-50%);
+  width: 7px; height: 7px; border-radius: 50%; background: #e8a33d;
+}
+.panel-lista { min-width: 0; }
+.panel-lista .campo label { color: var(--burdeo); }
+.separador-agenda {
+  background: var(--burdeo); color: #fff; font-weight: 700; font-size: 13px;
+  padding: 8px 12px; border-radius: 8px; margin: 8px 0;
+}
+.item-agenda {
+  background: #fff; border: 1px solid var(--borde); border-left: 4px solid var(--burdeo);
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 8px;
+}
+.item-agenda strong { display: block; color: var(--primario); }
+
+/* ---------- Mapa del torneo (bracket) ---------- */
+.bracket {
+  display: flex; gap: 14px; overflow-x: auto; padding-bottom: 10px; align-items: flex-start;
+}
+.bracket-col { min-width: 220px; flex: 1 1 220px; }
+.bracket-ronda {
+  background: var(--burdeo); color: #fff; font-weight: 700; font-size: 13px;
+  text-align: center; padding: 8px 10px; border-radius: 8px; margin-bottom: 10px;
+}
+.bracket-cruces { display: flex; flex-direction: column; gap: 14px; }
+.match-card {
+  background: #fff; border: 1px solid var(--borde); border-radius: 10px;
+  padding: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+.match-card.match-bye { border-style: dashed; background: #fafafa; }
+.match-cabecera { font-size: 11px; color: var(--texto); opacity: 0.8; margin-bottom: 6px; }
+.match-equipo {
+  display: flex; align-items: center; gap: 6px; padding: 7px 9px; border-radius: 7px;
+  background: #f3f5f7; font-weight: 600; font-size: 13px;
+}
+.match-equipo.ganador { background: #e7f3ec; color: #1f7a44; border: 1px solid #bcdcc9; }
+.match-equipo.libre { color: #9aa3af; font-weight: 400; font-style: italic; }
+.match-puntaje { margin-left: auto; background: var(--primario); color: #fff; border-radius: 6px; padding: 0 7px; font-size: 12px; }
+.match-sep { text-align: center; font-size: 10px; color: #9aa3af; margin: 3px 0; }
+.match-acciones { margin-top: 8px; }
+
+/* ---------- Responsive (movil): menu plegable ---------- */
+@media (max-width: 768px) {
+  .btn-menu { display: flex; }
+  .btn-cerrar-menu { display: block; }
+  .sidebar {
+    position: fixed; top: 0; left: 0; bottom: 0; z-index: 50;
+    width: 260px; transform: translateX(-100%);
+    transition: transform 0.25s ease; box-shadow: 2px 0 20px rgba(0,0,0,0.3);
+  }
+  body.menu-abierto .sidebar { transform: translateX(0); }
+  body.menu-abierto { overflow: hidden; }
+  body.menu-abierto .overlay-menu { display: block; }
+  #contenido { padding: 16px; padding-top: 70px; }
+  .encabezado { flex-direction: column; align-items: flex-start; gap: 10px; }
+}

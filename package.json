@@ -1,0 +1,30 @@
+{
+  "name": "daem",
+  "version": "1.0.0",
+  "description": "DAEM - Plataforma de gestion de actividades extraprogramaticas (deportivas y artistico/culturales) a nivel comunal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "seed": "node seed/seed.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cors": "^2.8.5",
+    "dotenv": "^17.4.2",
+    "express": "^4.21.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongodb-memory-server": "^10.1.4",
+    "mongoose": "^8.8.0"
+  },
+  "keywords": [
+    "nodejs",
+    "poo",
+    "daem",
+    "deporte",
+    "cultura",
+    "educacion"
+  ],
+  "author": "Estudiante",
+  "license": "MIT"
+}
