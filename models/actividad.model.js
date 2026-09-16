@@ -10,11 +10,25 @@ const encuentroSchema = new mongoose.Schema(
   { _id: true }
 );
 
+// Categoria (edad/nivel) y sus subcategorias dentro de una actividad.
+// ej. Categoria "SUB 13" con subcategorias ["Damas", "Varones"].
+const categoriaSchema = new mongoose.Schema(
+  {
+    nombre: { type: String, required: true, trim: true },
+    subcategorias: [{ type: String, trim: true }],
+  },
+  { _id: false }
+);
+
 // Actividad extraprogramatica publicada por el Admin DAEM.
+// Pertenece a una Seccion (ej. Juegos Deportivos Municipales) y puede
+// llevarse en una o mas categorias, cada una con subcategorias.
 const actividadSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true, trim: true },
     area: { type: String, required: true, enum: ["Deportiva", "Artístico/Cultural"] },
+    seccion: { type: mongoose.Schema.Types.ObjectId, ref: "Seccion", default: null },
+    categorias: [categoriaSchema],
     divisiones: [{ type: String }],
     anio: { type: Number, required: true, default: () => new Date().getFullYear() },
     estado: {

@@ -307,118 +307,708 @@ async function panelAdminUsuarios() {
   };
 }
 
+let __actEditando = null;
+
+function categoriasATexto(categorias) {
+  return (categorias || [])
+    .map((c) => {
+      const nombre = String(c.nombre || "").trim();
+      const subs = (c.subcategorias || []).map((s) => String(s || "").trim()).filter(Boolean);
+      return subs.length ? `${nombre} > ${subs.join(", ")}` : nombre;
+    })
+    .join("\n");
+}
+
+function textoACategorias(texto) {
+  return String(texto || "")
+    .split("\n")
+    .map((linea) => linea.trim())
+    .filter(Boolean)
+    .map((linea) => {
+      const [nombreRaw, subsRaw] = linea.split(">");
+      const nombre = String(nombreRaw || "").trim();
+      if (!nombre) return null;
+      const subcategorias = String(subsRaw || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      return { nombre, subcategorias };
+    })
+    .filter(Boolean);
+}
+
 async function panelAdminActividades() {
-  const act = await API.actividades();
-  const divs = (CAT.divisiones || []).map((d) => d.nombre);
+  const [act, ins, secs] = await Promise.all([
+    API.actividades(),
+    API.inscripciones(),
+    API.secciones().catch(() => []),
+  ]);
+  const secPorId = {};
+  secs.forEach((s) => { secPorId[s._id] = s; });
+  const porAct = {};
+  ins.forEach((i) => {
+    if (!i || i.estado === "rechazada") return;
+    const id = i.actividad ? String(i.actividad._id || i.actividad) : null;
+    if (!id) return;
+    porAct[id] = porAct[id] || {};
+    const div = i.division || "Sin categoria";
+    porAct[id][div] = porAct[id][div] || { total: 0, varones: 0, damas: 0 };
+    (i.alumnos || []).forEach((al) => {
+      porAct[id][div].total += 1;
+      if (al.genero === "M") porAct[id][div].varones += 1;
+      else if (al.genero === "F") porAct[id][div].damas += 1;
+    });
+  });
+
+  const nombresCategorias = (a) => {
+    if (a.categorias && a.categorias.length) return a.categorias.map((c) => c.nombre);
+    return (a.divisiones || []).length ? a.divisiones : [];
+  };
+  const filasDesglose = (a, idA) => {
+    const nombres = nombresCategorias(a);
+    if (!nombres.length) {
+      return `<tr><td>Sin categorias</td><td class="act-num">0</td><td class="act-num">0</td><td class="act-num">0</td></tr>`;
+    }
+    return nombres.map((nombreCat) => {
+      const d = porAct[idA] && porAct[idA][nombreCat];
+      const total = d ? d.total : 0;
+      const varones = d ? d.varones : 0;
+      const damas = d ? d.damas : 0;
+      const cat = (a.categorias || []).find((c) => c.nombre === nombreCat);
+      const subs = cat && cat.subcategorias && cat.subcategorias.length
+        ? ` <span class="muted">(${esc(cat.subcategorias.join(" / "))})</span>` : "";
+      return `<tr><td><strong>${esc(nombreCat)}</strong>${subs}</td><td class="act-num">${total}</td><td class="act-num">${varones}</td><td class="act-num">${damas}</td></tr>`;
+    }).join("");
+  };
+  const totalesFila = (a, idA) => {
+    const nombres = nombresCategorias(a);
+    let t = 0, v = 0, d = 0;
+    nombres.forEach((n) => {
+      const c = porAct[idA] && porAct[idA][n];
+      if (c) { t += c.total; v += c.varones; d += c.damas; }
+    });
+    return `<tr class="act-fila-tot"><td>Total</td><td class="act-num">${t}</td><td class="act-num">${v}</td><td class="act-num">${d}</td></tr>`;
+  };
+  const renderCategorias = (a) => {
+    if (a.categorias && a.categorias.length) {
+      return a.categorias
+        .map((c) => {
+          const subs = (c.subcategorias || []).join(" / ");
+          return `<strong>${esc(c.nombre)}</strong>${subs ? ` <span class="muted">(${esc(subs)})</span>` : ""}`;
+        })
+        .join(" · ");
+    }
+    return esc((a.divisiones || []).join(", ") || "-");
+  };
+
+  const actConvSeccion = act.map((a) => ({
+    ...a,
+    seccionNombre: a.seccion && secPorId[a.seccion] ? secPorId[a.seccion].nombre : "Sin sección",
+  }));
+
+  const grupos = [];
+  secs.forEach((s) => {
+    const items = actConvSeccion.filter((a) => String(a.seccion) === String(s._id));
+    if (items.length) grupos.push({ seccion: s.nombre, items });
+  });
+  const libres = actConvSeccion.filter((a) => !a.seccion);
+  if (libres.length) grupos.push({ seccion: "Sin sección", items: libres });
+
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Actividades</h2><button class="btn btn-primario2" id="btn-nuevo-act">+ Nueva</button></div>
+    `<div class="encabezado"><h2 class="pagina">Actividades</h2>
+       <button class="btn btn-primario2" id="btn-nuevo-act">+ Nueva</button>
+       <button class="btn btn-mini" id="btn-seccion-act">+ Sección</button></div>
+
      <div id="form-nuevo-act" class="tarjeta oculta">
+       <h3 id="act-form-titulo">Nueva actividad</h3>
        <div class="grid-2">
          <div class="campo"><label>Nombre</label><input id="act-nombre"></div>
          <div class="campo"><label>Area</label><select id="act-area">${(CAT.areas || []).map((a) => `<option>${esc(a)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Divisiones</label>
-           <select id="act-div" multiple size="4">${divs.map((d) => `<option value="${esc(d)}">${esc(d)}</option>`).join("")}</select></div>
+         <div class="campo"><label>Seccion</label>
+           <select id="act-seccion"><option value="">Sin seccion</option>${secs.map((s) => `<option value="${s._id}">${esc(s.nombre)}</option>`).join("")}</select></div>
+       </div>
+       <div class="campo"><label>Categorias y subcategorias (una por linea: "Categoria > Sub1, Sub2")</label>
+         <textarea id="act-categorias" rows="4" placeholder="SUB 13 > Damas, Varones"></textarea></div>
+       <div class="grid-2">
          <div class="campo"><label>Recintos (separados por coma)</label><input id="act-recintos" placeholder="Cancha 1, Polideportivo"></div>
          <div class="campo"><label>Limite de inscritos (0 = sin limite)</label><input type="number" id="act-limite" value="0" min="0"></div>
+         <div class="campo"><label>Estado</label><select id="act-estado">
+           <option value="publicada">Publicada</option>
+           <option value="en_inscripcion">En inscripcion</option>
+           <option value="cerrada">Cerrada</option></select></div>
          <div class="campo"><label>Apertura inscripciones</label><input type="date" id="act-apertura"></div>
          <div class="campo"><label>Cierre inscripciones</label><input type="date" id="act-cierre"></div>
          <div class="campo"><label>Edad minima (opcional)</label><input type="number" id="act-edad-min" value="" min="0" max="120" placeholder="6"></div>
          <div class="campo"><label>Edad maxima (opcional)</label><input type="number" id="act-edad-max" value="" min="0" max="120" placeholder="18"></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-act">Guardar</button>
+       <button class="btn btn-mini" id="btn-cancelar-act">Cancelar</button>
      </div>
-     ${act.map((a) => {
-        const ahora = new Date();
-        const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
-        const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
-        const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
-        const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
-        const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
-        return `<div class="tarjeta"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3>
-          <p class="muted">Divisiones: ${esc(a.divisiones.join(", "))} | Recintos: ${esc(a.recintos.join(", ") || "-")} | Estado: ${esc(a.estado)} | Limite inscritos: ${a.limiteInscritos || "Sin limite"}${a.edadMinima || a.edadMaxima ? ` | Edad: ${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios` : ""}</p>
-          <p class="muted"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
-          ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p></div>`;
-      }).join("")}`
+
+     ${grupos.map((g) => `
+       <h3 class="subtitulo-seccion">${esc(g.seccion)}</h3>
+       ${g.items.map((a) => {
+         const idA = String(a._id);
+         const ahora = new Date();
+         const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
+         const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
+         const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
+         const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
+         const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
+         return `<div class="tarjeta act-tarjeta">
+          <button type="button" class="act-titulo" data-toggle="${idA}" aria-expanded="false">
+            <span class="act-chevron">&#9656;</span><span class="act-nombre-titulo">${esc(a.nombre)}</span> <span class="badge-rol">${esc(a.area)}</span>
+          </button>
+          <div class="act-desg oculta" id="act-det-${idA}">
+            <div class="act-grid">
+              <div class="act-campo"><span class="act-label">Categorias</span><span>${renderCategorias(a)}</span></div>
+              <div class="act-campo"><span class="act-label">Seccion</span><span>${esc(a.seccionNombre)}</span></div>
+              <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
+              <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
+              <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
+              ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
+            </div>
+            <div class="act-desglose">
+              <h4 class="act-labdesg">Estudiantes por categoria</h4>
+              <table class="tabla-desglose">
+                <thead><tr><th>Categoria</th><th>Total</th><th>Varones</th><th>Damas</th></tr></thead>
+                <tbody>${filasDesglose(a, idA)}${totalesFila(a, idA)}</tbody>
+              </table>
+            </div>
+            <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
+            ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
+            <div class="seccion">
+              <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
+              <button class="btn btn-mini" data-agregar-encuentro="${idA}">Agregar Encuentro</button>
+              <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
+            </div>
+          </div>
+        </div>`;
+       }).join("")}`).join("")}`
   );
-  $("#btn-nuevo-act").onclick = () => $("#form-nuevo-act").classList.toggle("oculta");
+
+  document.querySelectorAll(".act-titulo").forEach((b) => {
+    b.onclick = () => {
+      const det = document.getElementById(`act-det-${b.dataset.toggle}`);
+      const abierto = !det.classList.contains("oculta");
+      det.classList.toggle("oculta", abierto);
+      b.setAttribute("aria-expanded", String(!abierto));
+      b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+    };
+  });
+  document.querySelectorAll("[data-editar-act]").forEach((b) => {
+    b.onclick = () => {
+      const a = act.find((x) => String(x._id) === String(b.dataset.editarAct));
+      if (!a) return;
+      abrirFormActividad(a);
+    };
+  });
+  document.querySelectorAll("[data-agregar-encuentro]").forEach((b) => {
+    b.onclick = () => {
+      const fecha = prompt("Fecha del encuentro (AAAA-MM-DD):");
+      if (!fecha) return;
+      const hora = prompt("Hora (HH:MM):");
+      const lugar = prompt("Lugar (opcional):") || "Por definir";
+      API.peticion("POST", `/api/actividades/${b.dataset.agregarEncuentro}/encuentros`, { fecha, hora, lugar })
+        .then(() => { panelAdminActividades(); })
+        .catch((err) => alert(err.message));
+    };
+  });
+  document.querySelectorAll("[data-eliminar-act]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("Seguro que desea eliminar esta actividad?")) return;
+      try {
+        await API.eliminarActividad(b.dataset.eliminarAct);
+        panelAdminActividades();
+      } catch (err) { alert(err.message); }
+    };
+  });
+
+  $("#btn-nuevo-act").onclick = () => { abrirFormActividad(null); };
+  $("#btn-seccion-act").onclick = async () => {
+    const nombre = prompt("Nombre de la nueva seccion:");
+    if (!nombre) return;
+    const area = prompt("Area (Deportiva o Artístico/Cultural):");
+    try {
+      await API.crearSeccion({ nombre, area });
+      panelAdminActividades();
+    } catch (err) { alert(err.message); }
+  };
+  $("#btn-cancelar-act").onclick = () => {
+    __actEditando = null;
+    document.getElementById("form-nuevo-act").classList.add("oculta");
+  };
   $("#btn-guardar-act").onclick = async () => {
     try {
-      const divsSel = Array.from($("#act-div").selectedOptions).map((o) => o.value);
-      await API.crearActividad({
-        nombre: $("#act-nombre").value, area: $("#act-area").value, divisiones: divsSel,
+      const datos = {
+        nombre: $("#act-nombre").value,
+        area: $("#act-area").value,
+        seccion: $("#act-seccion").value || null,
+        categorias: textoACategorias($("#act-categorias").value),
         recintos: $("#act-recintos").value.split(",").map((s) => s.trim()).filter(Boolean),
         limiteInscritos: Number($("#act-limite").value) || 0,
+        estado: $("#act-estado").value,
         fechaAperturaInscripcion: $("#act-apertura").value || null,
         fechaCierreInscripcion: $("#act-cierre").value || null,
         edadMinima: $("#act-edad-min").value ? Number($("#act-edad-min").value) : null,
         edadMaxima: $("#act-edad-max").value ? Number($("#act-edad-max").value) : null,
-        estado: "publicada", encuentros: [],
-      });
+        encuentros: [],
+      };
+      if (__actEditando) {
+        delete datos.encuentros;
+        await API.actualizarActividad(__actEditando, datos);
+      } else {
+        await API.crearActividad(datos);
+      }
+      __actEditando = null;
       panelAdminActividades();
     } catch (err) { alert(err.message); }
   };
 }
 
+function abrirFormActividad(a) {
+  const form = document.getElementById("form-nuevo-act");
+  document.getElementById("act-form-titulo").textContent = a ? `Editar: ${a.nombre}` : "Nueva actividad";
+  $("#act-nombre").value = a ? a.nombre : "";
+  $("#act-area").value = a ? a.area : (CAT.areas && CAT.areas[0]);
+  $("#act-seccion").value = a && a.seccion ? String(a.seccion) : "";
+  $("#act-categorias").value = a ? categoriasATexto(a.categorias) : "";
+  $("#act-recintos").value = a ? (a.recintos || []).join(", ") : "";
+  $("#act-limite").value = a && a.limiteInscritos ? a.limiteInscritos : 0;
+  $("#act-estado").value = a ? a.estado : "publicada";
+  $("#act-apertura").value = a && a.fechaAperturaInscripcion ? String(a.fechaAperturaInscripcion).slice(0, 10) : "";
+  $("#act-cierre").value = a && a.fechaCierreInscripcion ? String(a.fechaCierreInscripcion).slice(0, 10) : "";
+  $("#act-edad-min").value = a && a.edadMinima != null ? a.edadMinima : "";
+  $("#act-edad-max").value = a && a.edadMaxima != null ? a.edadMaxima : "";
+  __actEditando = a ? String(a._id) : null;
+  form.classList.remove("oculta");
+  form.scrollIntoView({ behavior: "smooth" });
+}
+
 async function panelAdminTorneos() {
   const [tor, act] = await Promise.all([API.torneos(), API.actividades()]);
+  window.__actividadesAdmin = act;
   contenido(
     `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div>
      <div id="form-nuevo-tor" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>Nombre</label><input id="tor-nombre"></div>
          <div class="campo"><label>Actividad</label><select id="tor-act">${act.map((a) => `<option value="${a._id}">${esc(a.nombre)}</option>`).join("")}</select></div>
+         <div class="campo"><label>Categoria (division)</label><select id="tor-div"></select></div>
+         <div class="campo"><label>Formato</label><select id="tor-formato"><option value="amistoso">Amistoso</option><option value="competitivo">Competitivo</option></select></div>
          <div class="campo"><label>Semestre</label><select id="tor-sem"><option value="1">1</option><option value="2">2</option></select></div>
-         <div class="campo"><label>Grupos (separados por coma)</label><input id="tor-grupos" value="Grupo A, Grupo B"></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-tor">Guardar</button>
      </div>
-     ${tor.map((t) => `<div class="tarjeta">
-       <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.estado)}</span></h3>
-       <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} S${esc(t.semestre)} | Grupos: ${esc((t.grupos || []).join(", "))}</p>
-       <div class="seccion"><button class="btn btn-primario2 btn-mini" data-sorteo="${t._id}">Ejecutar Sorteo</button>
-       <button class="btn btn-mini" data-llaves="${t._id}">Ver Mapa del Torneo</button></div>
-       <div id="llaves-${t._id}" class="oculta"></div>
-     </div>`).join("")}`
+${tor.map((t) => `<div class="tarjeta">
+       <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "Sin categoria")}</span> <span class="badge-rol">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span> <span class="badge-rol">${esc(t.estado)}</span></h3>
+       <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} S${esc(t.semestre)} | Llave unica</p>
+       ${programacionTorneoResumen(t)}
+ <div class="seccion">
+        <button class="btn btn-mini" data-equipos="${t._id}">Equipos</button>
+        <button class="btn btn-mini" data-partidos="${t._id}" data-nombre="${esc(t.nombre)}" data-formato="${esc(t.formato || "amistoso")}">Partidos</button>
+        <button class="btn btn-primario2 btn-programar" data-programar="${t._id}">Programar Torneo</button>
+        <button class="btn btn-mini" data-llaves="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa del Torneo</button></div>
+       <div class="form-programar oculta" data-form-programar="${t._id}" data-torneo-nombre="${esc(t.nombre)}" data-torneo-actividad="${esc(t.actividad ? t.actividad._id || t.actividad : "")}"></div>
+      </div>`).join("")}`
   );
-  $("#btn-nuevo-tor").onclick = () => $("#form-nuevo-tor").classList.toggle("oculta");
+  $("#btn-nuevo-tor").onclick = () => {
+    $("#form-nuevo-tor").classList.toggle("oculta");
+    cargarCategoriasTorneo();
+  };
+  $("#tor-act").onchange = cargarCategoriasTorneo;
   $("#btn-guardar-tor").onclick = async () => {
     try {
+      const nombre = $("#tor-nombre").value.trim();
+      if (!nombre) { alert("Indique el nombre del torneo"); return; }
       await API.crearTorneo({
-        nombre: $("#tor-nombre").value, actividad: $("#tor-act").value,
+        nombre, actividad: $("#tor-act").value, division: $("#tor-div").value,
         semestre: Number($("#tor-sem").value), anio: new Date().getFullYear(),
-        grupos: $("#tor-grupos").value.split(",").map((s) => s.trim()).filter(Boolean),
+        formato: $("#tor-formato").value,
+        grupos: ["Llave"],
         formulario: {},
       });
       panelAdminTorneos();
     } catch (err) { alert(err.message); }
   };
-  document.querySelectorAll("[data-sorteo]").forEach((b) => {
-    b.onclick = async () => { try { await API.ejecutarSorteo(b.dataset.sorteo); alert("Sorteo ejecutado"); panelAdminTorneos(); } catch (err) { alert(err.message); } };
+  document.querySelectorAll("[data-equipos]").forEach((b) => {
+    b.onclick = () => panelAdminEquipos(b.dataset.equipos);
+  });
+  document.querySelectorAll("[data-partidos]").forEach((b) => {
+    b.onclick = () => verPartidos(b.dataset.partidos, b.dataset.nombre || "Partidos", b.dataset.formato || "amistoso");
   });
   document.querySelectorAll("[data-llaves]").forEach((b) => {
-    b.onclick = async () => {
-      const div = $(`#llaves-${b.dataset.llaves}`);
-      div.classList.toggle("oculta");
-      if (div.innerHTML) return;
-      div.innerHTML = "<p class='muted'>Cargando mapa del torneo...</p>";
+    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => alert(err.message));
+  });
+  document.querySelectorAll("[data-programar]").forEach((b) => {
+    b.onclick = () => {
+      const torneoId = b.dataset.programar;
+      const box = document.querySelector(`[data-form-programar="${torneoId}"]`);
+      if (!box) return;
+      if (box.innerHTML === "") {
+        const torneo = (window.__torneosProgramables || []).find((t) => String(t._id) === String(torneoId));
+        box.innerHTML = formProgramarTorneo(torneo);
+      }
+      box.classList.toggle("oculta");
+    };
+  });
+
+  // Delegacion: guardar programacion y toggle de requisitos del formulario.
+  const torCont = document.querySelector("#vista-contenido") || document.body;
+  const onProgramarClick = async (e) => {
+    const btn = e.target.closest("[data-guardar-programar]");
+    const check = e.target.closest(".pr-req");
+    if (btn) {
+      const cont = btn.closest(".form-programar");
+      const torneoId = cont?.dataset.formProgramar;
+      if (!torneoId) { alert("Torneo invalido"); return; }
+      const datos = {
+        fechaAperturaInscripcion: cont.querySelector(".pr-apertura")?.value || null,
+        fechaCierreInscripcion: cont.querySelector(".pr-cierre")?.value || null,
+        requisitos: {
+          activo: cont.querySelector(".pr-req")?.checked || false,
+          edadMinima: cont.querySelector(".pr-edad-min")?.value ? Number(cont.querySelector(".pr-edad-min").value) : null,
+          edadMaxima: cont.querySelector(".pr-edad-max")?.value ? Number(cont.querySelector(".pr-edad-max").value) : null,
+          genero: cont.querySelector(".pr-genero")?.value || "",
+        },
+      };
       try {
-        await mostrarBracket(b.dataset.llaves, div);
-      } catch (err) { div.innerHTML = mensajeError(err); }
+        await API.actualizarTorneo(torneoId, datos);
+        alert("Programacion guardada");
+        panelAdminTorneos();
+      } catch (err) { alert(err.message); }
+      return;
+    }
+    if (check) actualizarEstadoRequisitos(check);
+  };
+  torCont.addEventListener("click", onProgramarClick);
+  torCont.addEventListener("change", onProgramarClick);
+  window.__torneosProgramables = tor;
+}
+
+// Rersumen de la programacion del torneo (fechas y requisitos).
+function programacionTorneoResumen(t) {
+  const r = t.requisitos || {};
+  const partes = [];
+  if (t.fechaAperturaInscripcion) partes.push(`Apertura: ${new Date(t.fechaAperturaInscripcion).toLocaleDateString("es-CL")}`);
+  if (t.fechaCierreInscripcion) partes.push(`Cierre: ${new Date(t.fechaCierreInscripcion).toLocaleDateString("es-CL")}`);
+  if (r.activo) {
+    const req = [];
+    if (r.edadMinima != null || r.edadMaxima != null) req.push(`Edad: ${r.edadMinima ?? "?"} - ${r.edadMaxima ?? "?"}`);
+    if (r.genero) req.push(`Genero: ${r.genero}`);
+    partes.push(`Requisitos: ${req.join(", ") || "ver requisitos"}`);
+  } else {
+    partes.push("Sin requisitos");
+  }
+  return partes.length ? `<p class="muted">${esc(partes.join(" | "))}</p>` : "";
+}
+
+// Formulario para programar la inscripcion del torneo (fechas y requisitos).
+function formProgramarTorneo(t) {
+  const torneo = t || {};
+  const r = torneo.requisitos || {};
+  const fA = torneo.fechaAperturaInscripcion ? new Date(torneo.fechaAperturaInscripcion).toISOString().slice(0, 10) : "";
+  const fC = torneo.fechaCierreInscripcion ? new Date(torneo.fechaCierreInscripcion).toISOString().slice(0, 10) : "";
+  const selGenero = (v) => ["varones", "damas", "mixto"].map((g) => `<option value="${g}" ${String(r.genero) === g ? "selected" : ""}>${g === "varones" ? "Varones" : g === "damas" ? "Damas" : "Mixto"}</option>`).join("");
+  return `<div class="tarjeta form-programar-inner">
+      <p class="muted">Programe la ventana de inscripcion del torneo. Aparecera en el perfil del coordinador para inscribir estudiantes.</p>
+      <div class="grid-2">
+        <div class="campo"><label>Fecha de apertura</label><input type="date" class="pr-apertura" value="${fA}"></div>
+        <div class="campo"><label>Fecha de cierre</label><input type="date" class="pr-cierre" value="${fC}"></div>
+      </div>
+      <div class="campo pr-req-row">
+        <span class="pr-req-titulo">Requisitos</span>
+        <label class="pr-req-check"><input type="checkbox" class="pr-req" ${r.activo ? "checked" : ""}></label>
+      </div>
+      <div class="grid-2 pr-req-box ${r.activo ? "" : "oculta"}">
+        <div class="campo"><label>Edad minima</label><input type="number" class="pr-edad-min" min="0" value="${r.edadMinima ?? ""}"></div>
+        <div class="campo"><label>Edad maxima</label><input type="number" class="pr-edad-max" min="0" value="${r.edadMaxima ?? ""}"></div>
+        <div class="campo"><label>Genero permitido</label><select class="pr-genero">${selGenero()}</select></div>
+      </div>
+      <div class="seccion">
+        <button class="btn btn-ok btn-mini" data-guardar-programar="${torneo._id || ""}">Guardar Programacion</button>
+      </div>
+    </div>`;
+}
+
+function actualizarEstadoRequisitos(check) {
+  const box = check.closest(".form-programar-inner")?.querySelector(".pr-req-box");
+  if (box) box.classList.toggle("oculta", !check.checked);
+}
+
+// Vista de la fase de grupos (todos contra todos) en horizontal con
+// asignacion de horario (fecha, hora inicio, hora termino, lugar) que
+// se sincroniza con la agenda.
+async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amistoso") {
+  const llaves = await API.llaves(torneoId);
+  const todas = (llaves || []).slice().sort((a, b) => (a.nivel || 0) - (b.nivel || 0) || (a.orden || 0) - (b.orden || 0));
+
+  const NOMBRE_FASES = { 1: "Final", 2: "Semifinal", 3: "Cuartos de Final", 4: "Octavos de Final" };
+  const aTexto = (l) => (l.nivel >= 1 ? l.grupo || (NOMBRE_FASES[l.nivel] || "Eliminatoria") : "Fase de Grupos");
+  const ORDEN_FASE = { "Fase de Grupos": 0, "Octavos de Final": 1, "Cuartos de Final": 2, "Semifinal": 3, Final: 4 };
+
+  // Competitivo: solo los cruces del mapa del torneo (eliminatorias).
+  const visibles = formato === "competitivo" ? todas.filter((l) => (l.nivel || 0) >= 1) : todas;
+
+  const grupos = {};
+  visibles.forEach((l) => {
+    const fase = aTexto(l);
+    (grupos[fase] = grupos[fase] || []).push(l);
+  });
+  const fasesOrden = Object.keys(grupos).sort((x, y) => (ORDEN_FASE[x] ?? 9) - (ORDEN_FASE[y] ?? 9));
+
+  const fechaVal = (f) => (f ? new Date(f) : null);
+  const dateStr = (f) => (f ? new Date(f).toISOString().slice(0, 10) : "");
+
+  const tarjetaPartido = (p) => `<div class="tarjeta partido-horario">
+        <div class="partido-linea">
+          <strong>${esc(p.equipos && p.equipos[0] ? p.equipos[0].nombre : "Por definir")}</strong>
+          <span class="partido-vs">VS</span>
+          <strong>${esc(p.equipos && p.equipos[1] ? p.equipos[1].nombre : "Por definir")}</strong>
+          <button class="btn btn-mini btn-primario2 partido-asig" data-toggle-horario="${p._id}">Asignar Horario</button>
+        </div>
+        <p class="muted partido-asignado">${fechaVal(p.fecha)
+          ? `Fecha: ${esc(new Date(p.fecha).toLocaleDateString("es-CL"))} · Hora: ${esc(p.hora || "-")}${p.horaTermino ? ` a ${esc(p.horaTermino)}` : ""} · Lugar: ${esc(p.lugar && p.lugar !== "Por definir" ? p.lugar : "-")}`
+          : "Sin horario asignado"}</p>
+        <div class="horario-form oculta" data-horario-llave="${p._id}">
+          <div class="grid-4">
+            <div class="campo"><label>Fecha</label><input type="date" class="h-fecha" data-horario="${p._id}" value="${dateStr(p.fecha)}"></div>
+            <div class="campo"><label>Hora inicio</label><input type="time" class="h-hora" data-horario="${p._id}" value="${esc(p.hora || "")}"></div>
+            <div class="campo"><label>Hora termino</label><input type="time" class="h-termino" data-horario="${p._id}" value="${esc(p.horaTermino || "")}"></div>
+            <div class="campo"><label>Lugar</label><input class="h-lugar" data-horario="${p._id}" value="${esc(p.lugar && p.lugar !== "Por definir" ? p.lugar : "")}" placeholder="Gimnasio, cancha..."></div>
+          </div>
+          <button class="btn btn-ok" data-guardar-horario="${p._id}">Guardar Horario</button>
+        </div>
+      </div>`;
+
+  const cuerpoPartidos = fasesOrden.length
+    ? fasesOrden.map((fase) => `
+        <h3 class="subtitulo-fase">${esc(fase)}</h3>
+        ${grupos[fase].map(tarjetaPartido).join("")}
+      `).join("")
+    : `<div class="tarjeta"><p class="muted">Aun no hay partidos. Ejecute el sorteo desde la seccion Equipos del torneo.</p></div>`;
+
+  contenido(
+    `<div class="encabezado"><h2 class="pagina">Partidos del Torneo</h2>
+       <button class="btn btn-mini" id="btn-volver-partidos">Volver</button></div>
+     <p class="muted">${esc(nombreTorneo)} · ${formato === "competitivo" ? "Torneo competitivo: se muestran los cruces del mapa del torneo" : "Amistoso: todos contra todos por fase"} . Asigne fecha, horario y lugar a cada partido (se sincroniza con la agenda).</p>
+     ${cuerpoPartidos}`
+  );
+  $("#btn-volver-partidos").onclick = () => panelAdminTorneos();
+  document.querySelectorAll("[data-toggle-horario]").forEach((b) => {
+    b.onclick = () => {
+      const id = b.dataset.toggleHorario;
+      document.querySelector(`[data-horario-llave="${id}"]`)?.classList.toggle("oculta");
+    };
+  });
+  document.querySelectorAll("[data-guardar-horario]").forEach((b) => {
+    b.onclick = async () => {
+      try {
+        const id = b.dataset.guardarHorario;
+        await API.actualizarLlave(id, {
+          fecha: document.querySelector(`[data-horario="${id}"].h-fecha`)?.value,
+          hora: document.querySelector(`[data-horario="${id}"].h-hora`)?.value,
+          horaTermino: document.querySelector(`[data-horario="${id}"].h-termino`)?.value,
+          lugar: document.querySelector(`[data-horario="${id}"].h-lugar`)?.value,
+        });
+        alert("Horario guardado");
+        verPartidos(torneoId, nombreTorneo);
+      } catch (err) { alert(err.message); }
     };
   });
 }
 
-// Mapa (bracket) del torneo estilo Copa del Mundo: llaves conectadas en
-// piramide, puntajes, ganadores que avanzan y caja del campeon.
-const nombreRonda = (cantidadLlaves) => {
-  if (cantidadLlaves <= 1) return "Final";
-  if (cantidadLlaves === 2) return "Semifinal";
-  if (cantidadLlaves === 4) return "Cuartos de Final";
-  if (cantidadLlaves === 8) return "Octavos de Final";
-  return `Ronda (${cantidadLlaves} cruces)`;
-};
+let __torneoBracket = null;
 
-const WC = { UH: 56, GAP: 36, CARD_W: 150, PAD: 14, COL_W: 178, LBL: 26, ROW_A: 14, ROW_B: 40 };
+async function abrirModalBracket(torneoId) {
+  __torneoBracket = torneoId;
+  const modal = document.getElementById("modal-bracket");
+  if (!modal) return;
+  modal.classList.remove("oculta");
+  const inter = document.getElementById("br-manual");
+  if (inter) {
+    inter.innerHTML = "";
+    inter.classList.add("oculta");
+  }
+  const modo = document.getElementById("br-modo");
+  if (modo) modo.value = "desempeno";
+  modal.scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+async function cargarCrucesManuales(contenedor) {
+  if (!__torneoBracket) return;
+  try {
+    const tablas = await API.tabla(__torneoBracket);
+    const tablaUnica = (tablas || [])[0] || { tabla: [] };
+    const equipos = (tablaUnica.tabla || []).map((f) => f.equipo).filter(Boolean);
+    if (equipos.length < 2) {
+      contenedor.innerHTML = `<p class="muted">Se necesitan al menos 2 equipos con puntuacion.</p>`;
+      return;
+    }
+    const par = equipos.map((e) => `<option value="${e._id}">${esc(e.nombre)}</option>`).join("");
+    const nPares = Math.ceil(equipos.length / 2);
+    let html = "<p class='muted'>Seleccione que equipo compite contra que equipo:</p>";
+    for (let i = 0; i < nPares; i++) {
+      html += `<div class="grid-2 br-par">
+        <select data-br-eq-a>${par}</select>
+        <select data-br-eq-b><option value="">(Libre / bye)</option>${par}</select>
+      </div>`;
+    }
+    contenedor.innerHTML = html;
+  } catch (err) {
+    contenedor.innerHTML = `<p class="muted">${esc(err.message)}</p>`;
+  }
+}
+
+async function generarBracket() {
+  const torneoId = __torneoBracket;
+  if (!torneoId) return;
+  const modo = document.getElementById("br-modo")?.value || "desempeno";
+  const datos = { modo };
+  if (modo === "manual") {
+    const pares = Array.from(document.querySelectorAll(".br-par")).map((p) => {
+      const a = p.querySelector("[data-br-eq-a]").value;
+      const b = p.querySelector("[data-br-eq-b]").value;
+      return b ? [a, b] : [a];
+    });
+    datos.cruces = pares.filter((p) => p[0]);
+  }
+  try {
+    const res = await API.ejecutarBracket(torneoId, datos);
+    alert(`Eliminatorias generadas (${res.totalRondas} ronda${res.totalRondas > 1 ? "s" : ""})`);
+    document.getElementById("modal-bracket")?.classList.add("oculta");
+    __torneoBracket = null;
+    panelAdminEquipos(torneoId);
+  } catch (err) {
+    alert(err.message);
+  }
+}
+
+// Rellena el selector de categoria (division) con las categorias de la
+// actividad seleccionada y sugiere un nombre de torneo para esa categoria.
+function cargarCategoriasTorneo() {
+  const idAct = document.getElementById("tor-act")?.value;
+  const div = document.getElementById("tor-div");
+  if (!div || !idAct) return;
+  const actSel = (window.__actividadesAdmin || []).find((a) => String(a._id) === String(idAct));
+  const categorias = (actSel && actSel.divisiones) || [];
+  div.innerHTML = categorias.map((c) => `<option>${esc(c)}</option>`).join("");
+  const nombre = document.getElementById("tor-nombre");
+  if (nombre && !nombre.value.trim()) {
+    nombre.value = categorias.length
+      ? `Torneo de ${actSel.nombre} ${categorias[0]}`
+      : `Torneo de ${actSel ? actSel.nombre : ""}`;
+  }
+}
+
+// Panel de gestion de equipos del torneo (estudiantes de distintos
+// establecimientos agrupados en equipos por sorteo automatico o manual).
+async function panelAdminEquipos(torneoId) {
+  const [equipos, pool] = await Promise.all([
+    API.equipos(torneoId),
+    API.poolEquipos(torneoId),
+  ]);
+  contenido(
+    `<div class="encabezado"><h2 class="pagina">Equipos del Torneo</h2>
+       <button class="btn btn-mini" id="btn-volver-equipos">Volver</button></div>
+     <div class="tarjeta">
+       <h3>Ejecutar Sorteo</h3>
+       <p class="muted">Genera la fase de grupos (todos contra todos) y arma las eliminatorias automaticamente segun la cantidad de equipos: 2 -> Final, 4 -> Semifinal, 8 -> Cuartos de Final, 16 -> Octavos de Final.</p>
+       <button class="btn btn-ok" id="btn-ejecutar-sorteo-equipos">Ejecutar Sorteo</button>
+       <button class="btn btn-mini" id="btn-generar-bracket-equipos">Generar Eliminatorias (opciones)</button>
+     </div>
+     <div class="tarjeta">
+       <h3>Sortear Equipos Automaticamente</h3>
+       <p class="muted">Distribuye los ${pool.total} estudiantes sin equipo en la cantidad indicada (min 2 estudiantes por equipo).</p>
+       <div class="grid-2">
+         <div class="campo"><label>Cantidad de equipos</label><input id="eq-cantidad" type="number" value="2" min="2"></div>
+       </div>
+       <button class="btn btn-ok" id="btn-sortear-equipos">Sortear Equipos</button>
+     </div>
+     <div class="tarjeta">
+       <h3>Crear Equipo Manual / Mixto</h3>
+       <p class="muted">Seleccione estudiantes de cualquier establecimiento (el equipo puede mezclar establecimientos).</p>
+       <div class="grid-2">
+         <div class="campo"><label>Nombre del equipo</label><input id="eq-nombre" placeholder="Equipo Estrellas"></div>
+       </div>
+       <div class="campo"><label>Estudiantes disponibles</label>
+         <div id="eq-pool" class="select-pool">
+           ${pool.pool.length ? pool.pool.map((a) => `<label class="pool-item">
+             <input type="checkbox" value="${a._id}"> ${esc(a.nombre)} <span class="muted">- ${esc(a.establecimiento ? a.establecimiento.nombre : "Sin establecimiento")}</span>
+           </label>`).join("") : '<p class="muted">No hay estudiantes sin equipo en este torneo.</p>'}
+         </div>
+       </div>
+       <button class="btn btn-ok" id="btn-crear-equipo">Crear Equipo</button>
+     </div>
+     <div id="modal-bracket" class="tarjeta oculta">
+       <h3>Generar Eliminatorias</h3>
+       <p class="muted">Todos los equipos clasifican. Segun la cantidad se arma: 4 equipos hasta Semifinal, 8 hasta Cuartos de Final, 16 hasta Octavos de Final.</p>
+       <div class="campo"><label>Modo de sorteo</label>
+         <select id="br-modo">
+           <option value="desempeno">Desempeno (igualado: 1° con el ultimo)</option>
+           <option value="azar">Al azar</option>
+           <option value="manual">Manual (elegir los enfrentamientos)</option>
+         </select>
+       </div>
+       <div id="br-manual" class="oculta"></div>
+       <button class="btn btn-ok" id="btn-generar-bracket">Generar</button>
+       <button class="btn btn-mini" id="btn-cancelar-bracket">Cancelar</button>
+     </div>
+     <h3 class="subtitulo-seccion">Equipos actuales (${equipos.length})</h3>
+     ${equipos.length ? equipos.map((e) => `<div class="tarjeta">
+       <h3>${esc(e.nombre)} <button class="btn btn-mini btn-peligro float-der" data-elim-equipo="${e._id}">Eliminar</button></h3>
+       <ul class="lista-alumnos">${(e.alumnos || []).map((a) => `<li><strong>${esc(a.nombre)}</strong> <span class="muted">- ${esc(a.establecimiento ? a.establecimiento.nombre : "Sin establecimiento")}</span></li>`).join("") || '<li class="muted">Sin estudiantes asignados</li>'}</ul>
+     </div>`).join("") : '<p class="muted">Aun no hay equipos en este torneo.</p>'}`
+  );
+  $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
+  $("#btn-ejecutar-sorteo-equipos").onclick = async () => {
+    try {
+      await API.ejecutarSorteo(torneoId);
+      alert("Sorteo ejecutado: fase de grupos + eliminatorias automaticas");
+      panelAdminEquipos(torneoId);
+    } catch (err) { alert(err.message); }
+  };
+  $("#btn-generar-bracket-equipos").onclick = () => abrirModalBracket(torneoId);
+  $("#btn-generar-bracket")?.addEventListener("click", generarBracket);
+  $("#btn-cancelar-bracket")?.addEventListener("click", () => {
+    $("#modal-bracket")?.classList.add("oculta");
+    window.__torneoBracket = null;
+  });
+  $("#br-modo")?.addEventListener("change", () => {
+    const manual = document.getElementById("br-manual");
+    if (!manual) return;
+    manual.classList.toggle("oculta", document.getElementById("br-modo").value !== "manual");
+    if (document.getElementById("br-modo").value === "manual") cargarCrucesManuales(manual);
+  });
+  $("#btn-sortear-equipos").onclick = async () => {
+    try {
+      await API.sortearEquipos(torneoId, Number($("#eq-cantidad").value));
+      panelAdminEquipos(torneoId);
+    } catch (err) { alert(err.message); }
+  };
+  $("#btn-crear-equipo").onclick = async () => {
+    const alumnos = Array.from(document.querySelectorAll("#eq-pool input:checked")).map((c) => c.value);
+    try {
+      await API.crearEquipo(torneoId, { nombre: $("#eq-nombre").value, alumnos });
+      panelAdminEquipos(torneoId);
+    } catch (err) { alert(err.message); }
+  };
+  document.querySelectorAll("[data-elim-equipo]").forEach((b) => {
+    b.onclick = async () => {
+      if (!confirm("¿Eliminar este equipo?")) return;
+      try { await API.eliminarEquipo(torneoId, b.dataset.elimEquipo); panelAdminEquipos(torneoId); }
+      catch (err) { alert(err.message); }
+    };
+  });
+}
+
+// ============================================================
+// Mapa (bracket) del torneo estilo Copa del Mundo.
+// Se abre en pantalla completa: zoom (lupa), giro horizontal/
+// vertical y arrastre con mouse o tacto (responsivo en movil).
+// ============================================================
+const MAPA = { CARD_W: 210, TH: 84, VS: 34, PAD: 18, H_COL_W: 260, H_GAP: 110, H_LBL: 32, V_GAP: 150, V_LEAF: 40 };
+const wcMH = () => MAPA.TH * 2 + MAPA.VS;
 
 const wcIdxGanador = (l) => {
   if (!l.ganador || !l.equipos || !l.equipos.length) return -1;
@@ -426,134 +1016,386 @@ const wcIdxGanador = (l) => {
   return String(l.equipos[0]._id || l.equipos[0]) === String(g) ? 0 : 1;
 };
 
-async function mostrarBracket(torneoId, div) {
-  const llaves = await API.llaves(torneoId);
+const wcIntegrantes = (equipo) => {
+  if (!equipo || !equipo.alumnos || !equipo.alumnos.length) return "";
+  return (equipo.alumnos || []).map((a) => a && a.nombre ? a.nombre : "").filter(Boolean).join(", ");
+};
+
+const wcTeamCard = (l, equipo, idx, top) => {
+  if (!equipo) return `<div class="wc-team wc-libre" style="height:${MAPA.TH}px;top:${top}px"><span class="wc-nombre">Por definir</span></div>`;
+  const gana = wcIdxGanador(l) === idx;
+  const pts = l.puntajeA !== null && l.puntajeA !== undefined
+    ? `<span class="wc-puntaje">${idx === 0 ? l.puntajeA : l.puntajeB}</span>` : "";
+  const integrantes = wcIntegrantes(equipo);
+  return `<div class="wc-team ${gana ? "ganador" : ""}" style="height:${MAPA.TH}px;top:${top}px"><span class="wc-nombre">${esc(equipo.nombre || "Libre")}</span>${integrantes ? `<span class="wc-integrantes">${esc(integrantes)}</span>` : ""}${pts}</div>`;
+};
+
+const wcDuo = (l, x, y, equipos = []) => {
+  const a = l.equipos && l.equipos[0] ? l.equipos[0] : null;
+  const b = l.equipos && l.equipos[1] ? l.equipos[1] : null;
+  const jugable = !l.bye && l.estado === "pendiente" && a && b;
+  const editable = !l.bye && l.estado === "pendiente" && l.nivel >= 1;
+  const MH = wcMH();
+  const topB = MAPA.TH + MAPA.VS;
+  const actualA = a ? String(a._id || a) : "";
+  const actualB = b ? String(b._id || b) : "";
+  const opcionesEq = (lado) => (equipos.length
+    ? equipos.map((e) => `<option value="${e._id}" ${String(e._id) === (lado === "a" ? actualA : actualB) ? "selected" : ""}>${esc(e.nombre)}</option>`).join("")
+    : "");
+
+  // Tablita de acciones flotante sobre el partido: Registrar Resultado /
+  // Editar Emparejamiento. Se superpone al mapa del torneo.
+  const acciones = [];
+  if (jugable) acciones.push(`<button class="wc-reg" data-toggle-llave="${l._id}">Registrar Resultado</button>`);
+  if (editable) acciones.push(`<button class="wc-reg wc-reg-editar" data-edit-llave="${l._id}">Editar Emparejamiento</button>`);
+  const barH = acciones.length ? acciones.length * 26 + 4 : 0;
+  const barTop = acciones.length ? Math.round(MH / 2 - barH / 2 - 8) : 0;
+  const barHTML = acciones.length ? `<div class="wc-acciones" style="top:${barTop}px">${acciones.join("")}</div>` : "";
+  const formTop = acciones.length ? barTop + barH + 6 : MH + 8;
+  const nombreA = a ? (a.nombre || "Equipo A") : "Equipo A";
+  const nombreB = b ? (b.nombre || "Equipo B") : "Equipo B";
+
+  return `<div class="wc-duo" style="left:${Math.round(x)}px;top:${Math.round(y)}px;width:${MAPA.CARD_W}px;height:${MH}px">
+    ${wcTeamCard(l, a, 0, 0)}
+    ${wcTeamCard(l, b, 1, topB)}
+    <div class="wc-vs" style="top:${MAPA.TH + MAPA.VS / 2 - 10}px">${l.bye ? "BYE" : "VS"}</div>
+    ${barHTML}
+    ${jugable ? `<div class="wc-form oculta" data-form-llave="${l._id}" style="top:${formTop}px">
+        <span class="wc-form-equipo">${esc(nombreA)}</span>
+        <input class="llave-in" data-in-llave="${l._id}" data-lado="a" placeholder="0" inputmode="numeric">
+        <span class="wc-form-equipo">${esc(nombreB)}</span>
+        <input class="llave-in" data-in-llave="${l._id}" data-lado="b" placeholder="0" inputmode="numeric">
+        <button class="wc-reg" data-guardar-llave="${l._id}">Guardar</button>
+      </div>` : ""}
+    ${editable ? `<div class="wc-form oculta" data-form-edit-llave="${l._id}" style="top:${formTop + 40}px">
+        <select class="llave-in edit-a" data-in-edit-llave="${l._id}" data-lado="a">${opcionesEq("a")}</select>
+        <select class="llave-in edit-b" data-in-edit-llave="${l._id}" data-lado="b">${opcionesEq("b")}</select>
+        <button class="wc-reg" data-guardar-edicion="${l._id}">OK</button>
+      </div>` : ""}
+  </div>`;
+};
+
+const clamp = (v, a, b) => Math.min(b, Math.max(a, v));
+
+const MapaTorneo = { torneoId: null, or: "h", zoom: 1, panX: 0, panY: 0 };
+
+// Renderiza el mapa (horizontal o vertical) dentro del contenedor dado.
+async function mostrarBracket(torneoId, div, or = "h") {
+  const [llaves, tablas, equipos] = await Promise.all([
+    API.llaves(torneoId),
+    API.tabla(torneoId).catch(() => []),
+    API.equipos(torneoId).catch(() => []),
+  ]);
   if (!llaves || !llaves.length) {
-    div.innerHTML = "<p class='muted'>Aun no hay llaves. Ejecute el sorteo para ver el mapa del torneo.</p>";
+    div.innerHTML = `<div class="world-cup"><p class="world-cup-vacio">Aun no hay partidos. Ejecute el sorteo para ver el mapa del torneo.</p></div>`;
     return;
   }
+  const llavesElim = llaves.filter((l) => l.nivel >= 1);
 
-  const porNivel = {};
-  llaves.forEach((l) => { (porNivel[l.nivel] = porNivel[l.nivel] || []).push(l); });
-  const niveles = Object.keys(porNivel).map(Number).sort((a, b) => a - b);
-  const R = niveles.length;
+  // ---- Tabla de puntuacion unica del torneo ----
+  const grupoUnico = (tablas || [])[0] || { grupo: null, tabla: [] };
+  const enOrden = (grupoUnico.tabla || []).slice().sort((x, y) => (y.pts - x.pts) || String(x.equipo && x.equipo.nombre ? x.equipo.nombre : "").localeCompare(String(y.equipo && y.equipo.nombre ? y.equipo.nombre : "")));
+  const filasT = enOrden.map((f) => `<tr class="${f.pos <= 3 ? "fase-clas" : ""}"><td>${f.pos}</td><td>${esc(f.equipo && f.equipo.nombre ? f.equipo.nombre : "")}</td><td class="fase-pts">${f.pts}</td></tr>`).join("");
+  const clasifican = llavesElim.length
+    ? "todos clasifican a las eliminatorias"
+    : "puntaje general";
+  const bandGrupos = `<div class="fase-grupos"><div class="fase-group">
+      <div class="fase-titulo">Tabla de puntuacion <span class="fase-sub">${clasifican}</span></div>
+      ${filasT ? `<table class="fase-tabla"><thead><tr><th>#</th><th>Equipo</th><th>Pts</th></tr></thead><tbody>${filasT}</tbody></table>` : `<p class="fase-vacio">Sin partidos jugados aun</p>`}
+    </div></div>`;
 
-  const byId = {};
-  llaves.forEach((l) => { byId[String(l._id)] = l; });
-
-  // Posiciones verticales: las hojas apiladas y cada cruce centrado entre sus padres.
-  let cursor = 0;
-  const nivel1 = (porNivel[niveles[0]] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
-  nivel1.forEach((lv) => {
-    lv._top = cursor; lv._h = WC.UH; cursor += WC.UH + WC.GAP;
-  });
-  const canvasH = Math.max(cursor - WC.GAP, WC.UH);
-
-  niveles.slice(1).forEach((n) => {
-    (porNivel[n] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0)).forEach((lv) => {
-      const padres = (lv.hijos || []).map((id) => byId[String(id)]).filter(Boolean);
-      const cy = padres.length
-        ? padres.reduce((s, p) => s + (p._top + p._h / 2), 0) / padres.length
-        : WC.UH / 2;
-      lv._h = WC.UH; lv._top = cy - WC.UH / 2;
+  // ---- Eliminatorias (bracket de clasificacion segun cantidad de equipos) ----
+  let elimHTML = "";
+  if (llavesElim.length) {
+    const maxNivel = Math.max(...llavesElim.map((l) => l.nivel));
+    const porNivel = {};
+    llavesElim.forEach((l) => {
+      (porNivel[l.nivel] = porNivel[l.nivel] || []).push(l);
     });
-  });
+    Object.values(porNivel).forEach((lista) => lista.sort((a, b) => (a.orden || 0) - (b.orden || 0)));
 
-  const finalLv = porNivel[niveles[R - 1]][0];
-  const totalW = R * WC.COL_W + WC.PAD + WC.CARD_W;
-  const hTotal = WC.LBL + canvasH;
+    const NOMBRES = { 1: ["Final"], 2: ["Semifinal", "Final"], 3: ["Cuartos de Final", "Semifinal", "Final"], 4: ["Octavos de Final", "Cuartos de Final", "Semifinal", "Final"] };
+    const nombres = NOMBRES[maxNivel] || [];
 
-  const filaEquipo = (l, equipo, idxRow) => {
-    if (!equipo) return `<div class="wc-fila wc-libre"><span class="wc-nombre">Por definir</span></div>`;
-    const idEq = equipo._id || equipo;
-    const gana = wcIdxGanador(l) === idxRow;
-    const pts = l.puntajeA !== null && l.puntajeA !== undefined
-      ? `<span class="wc-puntaje">${idxRow === 0 ? l.puntajeA : l.puntajeB}</span>` : "";
-    return `<div class="wc-fila ${gana ? "ganador" : ""}"><span class="wc-nombre">${esc(equipo.nombre || "Libre")}</span>${pts}</div>`;
-  };
-
-  const columnas = niveles.map((n, idx) => {
-    const lvl = (porNivel[n] || []).slice().sort((a, b) => (a.orden || 0) - (b.orden || 0));
-    const cards = lvl.map((l) => {
-      const a = l.equipos && l.equipos[0] ? l.equipos[0] : null;
-      const b = l.equipos && l.equipos[1] ? l.equipos[1] : null;
-      const jugable = !l.bye && l.estado === "pendiente" && a && b;
-      return `<div class="wc-card" style="left:${WC.PAD}px;top:${WC.LBL + Math.round(l._top)}px;height:${WC.UH}px;width:${WC.CARD_W}px">
-        ${filaEquipo(l, a, 0)}
-        <div class="wc-vs">${l.bye ? "AVANZA DIRECTO" : "VS"}</div>
-        ${filaEquipo(l, b, 1)}
-        ${jugable ? `<button class="wc-reg" data-llave="${l._id}">Registrar Resultado</button>
-          <div class="wc-form oculta" id="form-llave-${l._id}">
-            <input id="pa-${l._id}" placeholder="A"><input id="pb-${l._id}" placeholder="B">
-            <button class="wc-reg" data-guardar-llave="${l._id}">Guardar</button>
-          </div>` : ""}
-      </div>`;
-    }).join("");
-    return `<div class="wc-col" style="left:${idx * WC.COL_W}px;width:${WC.COL_W}px;height:${hTotal}px">
-      <div class="wc-ronda-nombre">${nombreRonda(lvl.length)}</div>${cards}</div>`;
-  }).join("");
-
-  // Lineas conectoras (las traza un SVG sobre el lienzo).
-  const tramos = [];
-  niveles.slice(1).forEach((n) => {
-    const idxCol = niveles.indexOf(n);
-    const xBorde = idxCol * WC.COL_W;
-    const xEntrada = xBorde + WC.PAD;
-    (porNivel[n] || []).forEach((lv) => {
-      const padres = (lv.hijos || []).map((id) => byId[String(id)]).filter(Boolean);
-      if (!padres.length) return;
-      const ys = padres.map((p) => {
-        const y = WC.LBL + p._top + (wcIdxGanador(p) === 1 ? WC.ROW_B : WC.ROW_A);
-        tramos.push(`M ${(p.nivel - 1) * WC.COL_W + WC.PAD + WC.CARD_W} ${y} H ${xBorde}`);
-        return y;
+    // Calculo del layout vertical del bracket clasico.
+    const MH = wcMH();
+    const gapV = 64;
+    const top = {};
+    (porNivel[1] || []).forEach((l, i) => { top[l._id] = 40 + i * (MH + gapV); });
+    for (let nv = 2; nv <= maxNivel; nv++) {
+      (porNivel[nv] || []).forEach((l, i) => {
+        const h1 = porNivel[nv - 1][i * 2];
+        const h2 = porNivel[nv - 1][i * 2 + 1];
+        const c1 = h1 ? top[h1._id] + MH / 2 : 0;
+        const c2 = h2 ? top[h2._id] + MH / 2 : c1;
+        top[l._id] = Math.round((c1 + c2) / 2 - MH / 2);
       });
-      if (ys.length === 2) {
-        tramos.push(`M ${xBorde} ${Math.min(...ys)} V ${Math.max(...ys)}`);
-        tramos.push(`M ${xBorde} ${WC.LBL + lv._top + lv._h / 2} H ${xEntrada}`);
-      } else {
-        tramos.push(`M ${xBorde} ${ys[0]} H ${xEntrada}`);
-      }
-    });
-  });
-  // Linea del campeon: desde la final hasta su caja dorada.
-  if (finalLv) {
-    const fY = WC.LBL + finalLv._top + (wcIdxGanador(finalLv) === 1 ? WC.ROW_B : WC.ROW_A);
-    tramos.push(`M ${(R - 1) * WC.COL_W + WC.PAD + WC.CARD_W} ${fY} H ${R * WC.COL_W + WC.PAD}`);
+    }
+
+    const colW = MAPA.CARD_W + 110;
+    const altoTotal = Math.max(60, Math.max(...Object.keys(top).map((k) => top[k] + MH))) + 90 + 60;
+    let canvas = "";
+    for (let nv = 1; nv <= maxNivel; nv++) {
+      const lista = porNivel[nv] || [];
+      const duos = lista.map((l) => wcDuo(l, 26, top[l._id], equipos)).join("");
+      canvas += `<div class="wc-col" style="left:${(nv - 1) * colW}px;width:${MAPA.CARD_W + 90}px">
+        <div class="wc-ronda-nombre" style="height:26px">${(nombres[nv - 1] || "Ronda " + nv)}</div>
+        ${duos}</div>`;
+    }
+    const final = porNivel[maxNivel] && porNivel[maxNivel][0];
+    const campeonEq = final && final.ganador
+      ? (final.equipos || []).find((e) => e && (String(e._id) === String(final.ganador._id || final.ganador)))
+      : null;
+    const campeonHTML = `<div class="wc-campeon" style="left:${maxNivel * colW + 18}px;top:${(top[final && final._id] || 0) + MH / 2 - 28}px">
+      <div class="wc-cam-titulo">Campeon</div>
+      <div class="wc-cam-nombre">${campeonEq ? esc(campeonEq.nombre) : "Por definir"}</div>
+    </div>`;
+
+    elimHTML = `<div class="world-cup"><div class="world-cup-titulo">Eliminatorias</div>
+      <div class="world-cup-canvas" style="width:${maxNivel * colW + 240}px;height:${altoTotal}px;position:relative">
+        ${campeonHTML}${canvas}
+      </div></div>`;
   }
 
-  const champ = `<div class="wc-campeon" style="left:${R * WC.COL_W + WC.PAD}px;top:${WC.LBL + Math.round(finalLv._top)}px;width:${WC.CARD_W}px">
-    <div class="wc-cam-titulo">Campeon</div>
-    <div class="wc-cam-nombre">${finalLv.ganador && finalLv.ganador.nombre ? esc(finalLv.ganador.nombre) : "Por definir"}</div>
-  </div>`;
+  div.innerHTML = bandGrupos + elimHTML;
+  wcEnlazarAcciones(div, torneoId, or);
+}
 
-  div.innerHTML = `<div class="world-cup">
-    <div class="world-cup-titulo">Mapa del torneo</div>
-    <div class="world-cup-sub">Eliminacion directa · el ganador de cada cruce avanza de ronda</div>
-    <div class="world-cup-canvas" style="width:${totalW}px;height:${hTotal}px">
-      ${columnas}
-      ${champ}
-      <svg class="world-cup-svg" width="${totalW}" height="${hTotal}" viewBox="0 0 ${totalW} ${hTotal}">
-        <path d="${tramos.join(" ")}" fill="none" stroke="#e8a33d" stroke-width="2"/>
-      </svg>
-    </div>
-  </div>`;
-
-  div.querySelectorAll("[data-llave]").forEach((bb) => {
-    bb.onclick = () => { bb.classList.toggle("oculta"); const f = $(`#form-llave-${bb.dataset.llave}`); if (f) f.classList.toggle("oculta"); };
+// Botones dentro del mapa (registro de resultados).
+// Los botones de la tabla ("Registrar") y del mapa ("Registrar Resultado")
+// estan sincronizados: abren/cierran el mismo formulario de la llave.
+function wcEnlazarAcciones(cont, torneoId, or) {
+  cont.querySelectorAll("[data-toggle-llave]").forEach((bb) => {
+    bb.onclick = () => {
+      const id = bb.dataset.toggleLlave;
+      const form = cont.querySelector(`[data-form-llave="${id}"]`);
+      const abierto = form && !form.classList.contains("oculta");
+      cont.querySelectorAll(`[data-form-llave="${id}"]`).forEach((f) => f.classList.add("oculta"));
+      cont.querySelectorAll(`[data-form-edit-llave="${id}"]`).forEach((f) => f.classList.add("oculta"));
+      if (form && !abierto) form.classList.remove("oculta");
+    };
   });
-  div.querySelectorAll("[data-guardar-llave]").forEach((bb) => {
+  cont.querySelectorAll("[data-in-llave]").forEach((inp) => {
+    inp.oninput = () => {
+      const id = inp.dataset.inLlave;
+      const lado = inp.dataset.lado;
+      cont.querySelectorAll(`[data-in-llave="${id}"][data-lado="${lado}"]`).forEach((o) => {
+        if (o !== inp) o.value = inp.value;
+      });
+    };
+  });
+  cont.querySelectorAll("[data-guardar-llave]").forEach((bb) => {
     bb.onclick = async () => {
       try {
-        await API.registrarResultadoLlave(bb.dataset.guardarLlave, {
-          puntajeA: $(`#pa-${bb.dataset.guardarLlave}`).value,
-          puntajeB: $(`#pb-${bb.dataset.guardarLlave}`).value,
-        });
-        alert("Resultado registrado; el ganador avanza de ronda");
-        div.innerHTML = "<p class='muted'>Cargando mapa del torneo...</p>";
-        await mostrarBracket(torneoId, div);
+        const id = bb.dataset.guardarLlave;
+        const pa = cont.querySelector(`[data-in-llave="${id}"][data-lado="a"]`).value;
+        const pb = cont.querySelector(`[data-in-llave="${id}"][data-lado="b"]`).value;
+        await API.registrarResultadoLlave(id, { puntajeA: pa, puntajeB: pb });
+        alert("Resultado registrado");
+        await refrescarMapa();
       } catch (err) { alert(err.message); }
     };
   });
+  cont.querySelectorAll("[data-edit-llave]").forEach((bb) => {
+    bb.onclick = () => {
+      const id = bb.dataset.editLlave;
+      const form = cont.querySelector(`[data-form-edit-llave="${id}"]`);
+      const abierto = form && !form.classList.contains("oculta");
+      cont.querySelectorAll(`[data-form-edit-llave="${id}"]`).forEach((f) => f.classList.add("oculta"));
+      cont.querySelectorAll(`[data-form-llave="${id}"]`).forEach((f) => f.classList.add("oculta"));
+      if (form && !abierto) form.classList.remove("oculta");
+    };
+  });
+  cont.querySelectorAll("[data-guardar-edicion]").forEach((bb) => {
+    bb.onclick = async () => {
+      try {
+        const id = bb.dataset.guardarEdicion;
+        const a = cont.querySelector(`[data-in-edit-llave="${id}"][data-lado="a"]`).value;
+        const b = cont.querySelector(`[data-in-edit-llave="${id}"][data-lado="b"]`).value;
+        if (a === b) { alert("El equipo A y B no pueden ser el mismo"); return; }
+        await API.actualizarLlave(id, { equipos: [a, b] });
+        alert("Emparejamiento actualizado");
+        await refrescarMapa();
+      } catch (err) { alert(err.message); }
+    };
+  });
+}
+
+// ---------- Pantalla completa del mapa ----------
+function asegurarOverlay() {
+  let ovl = document.getElementById("mapa-ovl");
+  if (ovl) return ovl;
+  ovl = document.createElement("div");
+  ovl.id = "mapa-ovl";
+  ovl.className = "mapa-ovl oculta";
+  ovl.innerHTML = `
+    <div class="mapa-ovl-bar">
+      <div class="mapa-ovl-titulo">Mapa del Torneo</div>
+      <div class="mapa-ovl-ctrls">
+        <span class="mapa-icono" title="Lupa (zoom)">&#128269;</span>
+        <button class="mapa-btn" id="mapa-out" title="Alejar">-</button>
+        <span class="mapa-zoom-val" id="mapa-pct">100%</span>
+        <button class="mapa-btn" id="mapa-in" title="Acercar">+</button>
+        <button class="mapa-btn" id="mapa-girar" title="Girar orientacion (horizontal/vertical)">Girar</button>
+        <button class="mapa-btn mapa-btn-cerrar" id="mapa-cerrar" title="Salir del mapa">Salir</button>
+      </div>
+    </div>
+    <div class="mapa-vista" id="mapa-vista">
+      <div class="mapa-mundo" id="mapa-mundo">
+        <div class="mapa-lienzo" id="mapa-lienzo"></div>
+      </div>
+      <div class="mapa-hint">Arrastra para desplazar · Girar: horizontal/vertical · Zoom: lupa o rueda (Ctrl)</div>
+    </div>`;
+  document.body.appendChild(ovl);
+
+  document.getElementById("mapa-cerrar").onclick = cerrarMapa;
+  document.getElementById("mapa-in").onclick = () => ajustarZoom(1.25);
+  document.getElementById("mapa-out").onclick = () => ajustarZoom(1 / 1.25);
+  document.getElementById("mapa-girar").onclick = async () => {
+    MapaTorneo.or = MapaTorneo.or === "h" ? "v" : "h";
+    await refrescarMapa();
+    ajustarAjuste();
+  };
+
+  document.addEventListener("keydown", (e) => {
+    if (!ovl.classList.contains("oculta") && e.key === "Escape") cerrarMapa();
+  });
+
+  // Arrastre (mouse / tactil) y zoom con rueda o pellizco.
+  const vista = document.getElementById("mapa-vista");
+  const puntos = new Map();
+  let pinza = null;
+  vista.addEventListener("pointerdown", (e) => {
+    if (e.target.closest("button, input, select")) return;
+    puntos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (puntos.size === 2) {
+      const p = [...puntos.values()];
+      pinza = { base: Math.max(1, Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y)), zoom: MapaTorneo.zoom };
+    } else {
+      pinza = null;
+    }
+    vista.classList.add("arrastrando");
+    vista.setPointerCapture(e.pointerId);
+    e.preventDefault();
+  });
+  vista.addEventListener("pointermove", (e) => {
+    if (!puntos.has(e.pointerId)) return;
+    const antes = puntos.get(e.pointerId);
+    puntos.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (puntos.size === 2 && pinza) {
+      const p = [...puntos.values()];
+      const md = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+      const zn = clamp(pinza.zoom * (md / pinza.base), 0.3, 3);
+      const rect = vista.getBoundingClientRect();
+      const mx = (p[0].x + p[1].x) / 2 - rect.left;
+      const my = (p[0].y + p[1].y) / 2 - rect.top;
+      MapaTorneo.panX = mx - (mx - MapaTorneo.panX) * (zn / MapaTorneo.zoom);
+      MapaTorneo.panY = my - (my - MapaTorneo.panY) * (zn / MapaTorneo.zoom);
+      MapaTorneo.zoom = zn;
+    } else if (puntos.size === 1) {
+      MapaTorneo.panX += e.clientX - antes.x;
+      MapaTorneo.panY += e.clientY - antes.y;
+    }
+    aplicarVista();
+  });
+  const soltar = (e) => {
+    puntos.delete(e.pointerId);
+    pinza = null;
+    if (puntos.size === 0) vista.classList.remove("arrastrando");
+  };
+  vista.addEventListener("pointerup", soltar);
+  vista.addEventListener("pointercancel", soltar);
+  vista.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    if (e.ctrlKey) {
+      const rect = vista.getBoundingClientRect();
+      const cx = e.clientX - rect.left;
+      const cy = e.clientY - rect.top;
+      const zn = clamp(MapaTorneo.zoom * (e.deltaY < 0 ? 1.12 : 1 / 1.12), 0.3, 3);
+      MapaTorneo.panX = cx - (cx - MapaTorneo.panX) * (zn / MapaTorneo.zoom);
+      MapaTorneo.panY = cy - (cy - MapaTorneo.panY) * (zn / MapaTorneo.zoom);
+      MapaTorneo.zoom = zn;
+    } else {
+      MapaTorneo.panX -= e.deltaX;
+      MapaTorneo.panY -= e.deltaY;
+    }
+    aplicarVista();
+  }, { passive: false });
+
+  return ovl;
+}
+
+async function refrescarMapa() {
+  const lienzo = document.getElementById("mapa-lienzo");
+  if (!lienzo) return;
+  lienzo.innerHTML = "<div class='world-cup'><p class='world-cup-vacio'>Cargando mapa del torneo...</p></div>";
+  try {
+    await mostrarBracket(MapaTorneo.torneoId, lienzo, MapaTorneo.or);
+  } catch (err) {
+    lienzo.innerHTML = `<div class="world-cup"><p class="world-cup-vacio">${mensajeError(err)}</p></div>`;
+  }
+}
+
+function aplicarVista() {
+  const mundo = document.getElementById("mapa-mundo");
+  const pct = document.getElementById("mapa-pct");
+  if (mundo) mundo.style.transform = `translate(${MapaTorneo.panX}px, ${MapaTorneo.panY}px) scale(${MapaTorneo.zoom})`;
+  if (pct) pct.textContent = Math.round(MapaTorneo.zoom * 100) + "%";
+}
+
+function centrarMapa() {
+  const vista = document.getElementById("mapa-vista");
+  const lienzo = document.getElementById("mapa-lienzo");
+  if (!vista || !lienzo) return;
+  const vw = vista.clientWidth;
+  const vh = vista.clientHeight;
+  const w = Math.max(lienzo.offsetWidth, 1);
+  const h = Math.max(lienzo.offsetHeight, 1);
+  MapaTorneo.panX = (vw - w * MapaTorneo.zoom) / 2;
+  MapaTorneo.panY = (vh - h * MapaTorneo.zoom) / 2;
+  aplicarVista();
+}
+
+// Ajusta el zoom inicial al 200% (mapa grande y legible) y lo centra.
+function ajustarAjuste() {
+  const vista = document.getElementById("mapa-vista");
+  const lienzo = document.getElementById("mapa-lienzo");
+  if (!vista || !lienzo) return;
+  MapaTorneo.zoom = clamp(2, 0.3, 3);
+  centrarMapa();
+}
+
+function ajustarZoom(factor) {
+  const vista = document.getElementById("mapa-vista");
+  const rect = vista ? vista.getBoundingClientRect() : { left: 0, top: 0, width: window.innerWidth, height: window.innerHeight };
+  const cx = rect.width / 2;
+  const cy = rect.height / 2;
+  const zn = clamp(MapaTorneo.zoom * factor, 0.3, 3);
+  MapaTorneo.panX = cx - (cx - MapaTorneo.panX) * (zn / MapaTorneo.zoom);
+  MapaTorneo.panY = cy - (cy - MapaTorneo.panY) * (zn / MapaTorneo.zoom);
+  MapaTorneo.zoom = zn;
+  aplicarVista();
+}
+
+async function abrirMapaTorneo(torneoId, nombreTorneo = "") {
+  const ovl = asegurarOverlay();
+  ovl.classList.remove("oculta");
+  document.body.classList.add("mapa-abierto");
+  MapaTorneo.torneoId = torneoId;
+  const titulo = ovl.querySelector(".mapa-ovl-titulo");
+  if (titulo) titulo.textContent = nombreTorneo || "Mapa del Torneo";
+  MapaTorneo.or = "h";
+  MapaTorneo.zoom = 2;
+  MapaTorneo.panX = 0;
+  MapaTorneo.panY = 0;
+  await refrescarMapa();
+  ajustarAjuste();
+}
+
+function cerrarMapa() {
+  const ovl = document.getElementById("mapa-ovl");
+  if (ovl) ovl.classList.add("oculta");
+  document.body.classList.remove("mapa-abierto");
 }
 
 async function panelAdminInscripciones() {
@@ -722,9 +1564,10 @@ async function panelAdminAgenda() {
     const lista = filtrados.length ? filtrados.map((ev) => `
       <div class="item-agenda">
         <strong>${esc(ev.torneo)}</strong>
-        <span class="badge-rol">${esc(ev.actividad)}</span>
-        <p class="muted">${esc(new Date(ev.fecha).toLocaleDateString("es-CL"))} - ${esc(ev.hora)} @ ${esc(ev.lugar)}</p>
-        <p class="muted">Grupo: ${esc(ev.grupo)} | Division: ${esc(ev.division)}</p>
+        <span class="badge-rol">${esc(ev.division || ev.actividad)}</span>
+        <p class="muted"><span class="badge-rol">${esc(ev.fase || ev.grupo || "Fase de Grupos")}</span></p>
+        <p class="agenda-equipos"><strong>${esc(ev.equipos && ev.equipos[0] ? ev.equipos[0] : "Por definir")}</strong> vs <strong>${esc(ev.equipos && ev.equipos[1] ? ev.equipos[1] : "Por definir")}</strong></p>
+        <p class="muted">${esc(new Date(ev.fecha).toLocaleDateString("es-CL"))} - ${esc(ev.hora)}${ev.horaTermino ? ` a ${esc(ev.horaTermino)}` : ""} @ ${esc(ev.lugar)}</p>
       </div>`).join("")
       : `<p class="muted">No hay torneos para esta fecha.</p>`;
 
@@ -814,12 +1657,12 @@ async function cargarCarteleraEn(sel) {
     const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
     const puedeInscribir = abierta && dentroVentana;
     return `<div class="tarjeta"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3>
-    <p class="muted">Divisiones: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}${a.limiteInscritos ? ` | Cupos: ${a.limiteInscritos}` : ""}${a.edadMinima || a.edadMaxima ? ` | Edad: ${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios` : ""}</p>
+    <p class="muted">Categorias: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}${a.limiteInscritos ? ` | Cupos: ${a.limiteInscritos}` : ""}${a.edadMinima || a.edadMaxima ? ` | Edad: ${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios` : ""}</p>
     <p class="muted"><span class="estado ${puedeInscribir ? "est-activo" : "est-cancelado"}">${puedeInscribir ? "Inscripciones Abiertas" : "Cerrada"}</span>
     ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
     ${puedeInscribir ? `<button class="btn btn-mini" data-ins-act="${a._id}">Inscribir</button>` : ""}
     <div id="form-act-${a._id}" class="oculta campo">
-      <label>Division</label><select id="div-${a._id}">${a.divisiones.map((d) => `<option>${esc(d)}</option>`).join("")}</select>
+      <label>Categoria</label><select id="div-${a._id}">${a.divisiones.map((d) => `<option>${esc(d)}</option>`).join("")}</select>
       <button class="btn btn-ok btn-mini" data-guardar-ins="${a._id}">Enviar Inscripcion</button>
     </div></div>`;
   }).join("");
@@ -833,6 +1676,34 @@ async function cargarCarteleraEn(sel) {
       } catch (err) { alert(err.message); }
     };
   });
+
+  // Torneos programados (admin definio fechas/requisitos) visibles para inscribirse.
+  const tor = await API.torneos().catch(() => []);
+  const torneoAbiertos = tor.filter((t) => {
+    if (t.estado !== "inscripciones") return false;
+    const ahora = new Date();
+    const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
+    const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
+    if (inicio && ahora < inicio) return false;
+    if (fin && ahora > fin) return false;
+    return t.fechaAperturaInscripcion || t.fechaCierreInscripcion || (t.requisitos && t.requisitos.activo);
+  });
+  if (torneoAbiertos.length) {
+    const blocTorneos = document.createElement("div");
+    blocTorneos.innerHTML = `<h3 class="pagina">Torneos con inscripcion</h3>` + torneoAbiertos.map((t) => {
+      const req = t.requisitos || {};
+      const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
+      const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
+      const reqTxt = req.activo
+        ? `Edad ${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"} anios${req.genero ? ` | Solo ${req.genero}` : ""}`
+        : "Sin requisitos";
+      return `<div class="tarjeta"><h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "")}</span></h3>
+      <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
+      <p class="muted">Apertura: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} | Cierre: ${fin ? fin.toLocaleDateString("es-CL") : "-"}</p>
+      <p class="muted">Requisitos: ${esc(reqTxt)}</p></div>`;
+    }).join("");
+    div.appendChild(blocTorneos);
+  }
 }
 
 async function panelCoordEncargados() {
@@ -866,7 +1737,15 @@ async function panelCoordEncargados() {
 }
 
 async function panelCoordInscribir() {
-  const ins = await API.inscripciones();
+  const [ins, tor] = await Promise.all([API.inscripciones(), API.torneos().catch(() => [])]);
+  const ahora = new Date();
+  const torAbiertos = tor.filter((t) => {
+    if (t.estado !== "inscripciones") return false;
+    const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
+    const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
+    return (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
+  });
+  const opcionesTorneo = torAbiertos.map((t) => `<option value="${t._id}">${esc(t.nombre)}</option>`).join("");
   contenido(
     `<h2 class="pagina">Inscripciones y Cartelera</h2>
      <div class="seccion"><button class="btn btn-primario2" id="btn-cartelera">Ver Cartelera de Actividades</button></div>
@@ -877,7 +1756,9 @@ async function panelCoordInscribir() {
         <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
         <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
         <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
-      </tr>`).join("")}</tbody></table>
+      </tr>`).join("")}</tbody></table>${opcionesTorneo ? `<div class="campo" style="margin-top:12px"><label>Asociar al Torneo (requisitos validados)</label>
+      <div class="seccion"><select id="asoc-ins"></select><select id="asoc-tor">${opcionesTorneo}</select>
+      <button class="btn btn-ok btn-mini" id="btn-asoc-tor">Asociar</button></div></div>` : ""}
       <h3>Inscribir Estudiantes</h3><div id="alumnos-forms"></div>
      </div>`
   );
@@ -885,6 +1766,18 @@ async function panelCoordInscribir() {
   document.querySelectorAll("[data-retract]").forEach((b) => {
     b.onclick = async () => { try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); panelCoordInscribir(); } catch (err) { alert(err.message); } };
   });
+  const selAsocIns = $("#asoc-ins");
+  if (selAsocIns) {
+    const aceptadas = ins.filter((i) => i.estado === "aceptada");
+    selAsocIns.innerHTML = aceptadas.map((i) => `<option value="${i._id}">${esc(i.actividad ? i.actividad.nombre : "-")} - ${esc(i.division)}</option>`).join("") || "<option value=''>Sin inscripciones aceptadas</option>";
+    $("#btn-asoc-tor").onclick = async () => {
+      try {
+        const res = await API.asociarTorneo(selAsocIns.value, $("#asoc-tor").value);
+        alert("Inscripcion asociada al torneo\n" + (res.inscripcion && res.inscripcion.torneo || ""));
+        panelCoordInscribir();
+      } catch (err) { alert(err.message); }
+    };
+  }
 }
 
 { /* notas de soporte para agregar alumnos dentro del panel coordinador */ }
@@ -1037,7 +1930,7 @@ async function panelDirectorResumen() {
          ? act.map((a) => {
              const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
              const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
-             return `<div class="cambio-torneo"><strong>${esc(a.nombre)}</strong> <span class="badge-rol">${esc(a.area)}</span> <span class="muted">| Divisiones: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}</span>
+             return `<div class="cambio-torneo"><strong>${esc(a.nombre)}</strong> <span class="badge-rol">${esc(a.area)}</span> <span class="muted">| Categorias: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}</span>
              ${(inicio || fin) ? `<span class="muted">| Inscripcion: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} a ${fin ? fin.toLocaleDateString("es-CL") : "-"}</span>` : ""}</div>`;
            }).join("")
          : "<p class='muted'>No hay actividades publicadas.</p>"}

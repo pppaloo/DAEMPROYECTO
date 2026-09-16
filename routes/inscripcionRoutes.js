@@ -19,7 +19,9 @@ router.post("/", autorizarRol("coordinador", "admin"), (req, res) => controller.
 router.post("/:id/alumnos", autorizarRol("coordinador", "admin"), (req, res) =>
   controller.agregarAlumno(req, res)
 );
-router.post("/:id/torneo", autorizarRol("admin"), (req, res) => controller.asociarTorneo(req, res));
+router.post("/:id/torneo", autorizarRol("coordinador", "admin"), (req, res) =>
+  controller.asociarTorneo(req, res)
+);
 
 router.put("/:id/estado", autorizarRol("admin"), (req, res) => controller.cambiarEstado(req, res));
 router.put("/:id", autorizarRol("coordinador", "admin"), (req, res) => controller.modificar(req, res));

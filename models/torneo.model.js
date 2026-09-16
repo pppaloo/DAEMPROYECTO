@@ -6,6 +6,8 @@ const torneoSchema = new mongoose.Schema(
   {
     nombre: { type: String, required: true, trim: true },
     actividad: { type: mongoose.Schema.Types.ObjectId, ref: "Actividad", required: true },
+    division: { type: String, default: "" },
+    formato: { type: String, enum: ["amistoso", "competitivo"], default: "amistoso" },
     anio: { type: Number, required: true },
     semestre: { type: Number, required: true, enum: [1, 2] },
     estado: {
@@ -15,6 +17,18 @@ const torneoSchema = new mongoose.Schema(
     },
     grupos: [{ type: String }],
     formulario: { type: mongoose.Schema.Types.Mixed, default: {} },
+    requisitos: {
+      activo: { type: Boolean, default: false },
+      edadMinima: { type: Number, default: null },
+      edadMaxima: { type: Number, default: null },
+      genero: {
+        type: String,
+        enum: ["varones", "damas", "mixto", ""],
+        default: "",
+      },
+    },
+    fechaAperturaInscripcion: { type: Date, default: null },
+    fechaCierreInscripcion: { type: Date, default: null },
   },
   { timestamps: true }
 );

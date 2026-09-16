@@ -48,13 +48,36 @@ class TorneoController {
     }
   }
 
-  // Sorteo y emparejamiento de contrincantes.
+  // Sorteo de la fase de grupos.
   async ejecutarSorteo(req, res) {
     try {
       const resultado = await this.#service.ejecutarSorteo(req.params.id);
-      res.json({ mensaje: "Sorteo ejecutado", ...resultado });
+      res.json({ mensaje: "Sorteo ejecutado (fase de grupos)", ...resultado });
     } catch (error) {
       res.status(400).json({ error: error.message });
+    }
+  }
+
+  // Genera el bracket eliminatorio con todos los equipos clasificados.
+  // El modo de sorteo puede ser: desempeno (igualado), azar o manual.
+  async ejecutarBracket(req, res) {
+    try {
+      const resultado = await this.#service.ejecutarBracket(req.params.id, {
+        modo: req.body.modo || "desempeno",
+        crucesManuales: req.body.cruces || [],
+      });
+      res.json({ mensaje: "Eliminatorias generadas", ...resultado });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async obtenerTabla(req, res) {
+    try {
+      const tabla = await this.#service.obtenerTabla(req.params.id);
+      res.json(tabla);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
     }
   }
 

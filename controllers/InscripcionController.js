@@ -69,7 +69,7 @@ class InscripcionController {
 
   async asociarTorneo(req, res) {
     try {
-      const inscripcion = await this.#service.asociarTorneo(req.params.id, req.body.torneo);
+      const inscripcion = await this.#service.asociarTorneo(req.params.id, req.body.torneo, req.usuario);
       res.json({ mensaje: "Inscripcion asociada al torneo", inscripcion });
     } catch (error) {
       res.status(400).json({ error: error.message });

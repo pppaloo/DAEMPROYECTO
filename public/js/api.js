@@ -69,16 +69,41 @@ const API = {
   async usuarios() { return this.peticion("GET", "/api/usuarios"); },
   async crearUsuario(datos) { return this.peticion("POST", "/api/usuarios", datos); },
 
+  // ---------- Secciones ----------
+  async secciones() { return this.peticion("GET", "/api/secciones"); },
+  async crearSeccion(datos) { return this.peticion("POST", "/api/secciones", datos); },
+  async actualizarSeccion(id, datos) { return this.peticion("PUT", `/api/secciones/${id}`, datos); },
+  async eliminarSeccion(id) { return this.peticion("DELETE", `/api/secciones/${id}`); },
+
   // ---------- Actividades ----------
   async actividades() { return this.peticion("GET", "/api/actividades"); },
   async crearActividad(datos) { return this.peticion("POST", "/api/actividades", datos); },
+  async actualizarActividad(id, datos) { return this.peticion("PUT", `/api/actividades/${id}`, datos); },
+  async eliminarActividad(id) { return this.peticion("DELETE", `/api/actividades/${id}`); },
 
   // ---------- Torneos / Sorteo ----------
   async torneos() { return this.peticion("GET", "/api/torneos"); },
   async agendaTorneos() { return this.peticion("GET", "/api/torneos/agenda"); },
   async crearTorneo(datos) { return this.peticion("POST", "/api/torneos", datos); },
+  async actualizarTorneo(id, datos) { return this.peticion("PUT", `/api/torneos/${id}`, datos); },
   async ejecutarSorteo(id) { return this.peticion("POST", `/api/torneos/${id}/sorteo`); },
+  async ejecutarBracket(id, datos = {}) { return this.peticion("POST", `/api/torneos/${id}/bracket`, datos); },
+  async actualizarLlave(llaveId, datos) {
+    return this.peticion("PUT", `/api/resultados/llaves/${llaveId}`, datos);
+  },
   async llaves(id) { return this.peticion("GET", `/api/torneos/${id}/llaves`); },
+  async tabla(id) { return this.peticion("GET", `/api/torneos/${id}/tabla`); },
+  async equipos(id) { return this.peticion("GET", `/api/torneos/${id}/equipos`); },
+  async poolEquipos(id) { return this.peticion("GET", `/api/torneos/${id}/equipos/pool`); },
+  async sortearEquipos(id, cantidad) {
+    return this.peticion("POST", `/api/torneos/${id}/equipos/sortear`, { cantidad });
+  },
+  async crearEquipo(id, datos) {
+    return this.peticion("POST", `/api/torneos/${id}/equipos`, datos);
+  },
+  async eliminarEquipo(id, equipoId) {
+    return this.peticion("DELETE", `/api/torneos/${id}/equipos/${equipoId}`);
+  },
   async registrarResultadoLlave(llaveId, datos) {
     return this.peticion("POST", `/api/resultados/llaves/${llaveId}`, datos);
   },
@@ -86,6 +111,7 @@ const API = {
   // ---------- Inscripciones ----------
   async inscripciones() { return this.peticion("GET", "/api/inscripciones"); },
   async crearInscripcion(datos) { return this.peticion("POST", "/api/inscripciones", datos); },
+  async asociarTorneo(inscripcionId, torneo) { return this.peticion("POST", `/api/inscripciones/${inscripcionId}/torneo`, { torneo }); },
   async cambiarEstadoInscripcion(id, estado) {
     return this.peticion("PUT", `/api/inscripciones/${id}/estado`, { estado });
   },

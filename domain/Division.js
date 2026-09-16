@@ -2,6 +2,7 @@ const { obtenerDivision } = require("../constants/catalogos");
 
 // Division / categoria de competencia (MINIS, SUB 13, JUVENIL, DAMAS, VARONES).
 // Valida la fecha de nacimiento de un alumno contra el rango de la categoria.
+// Las categorias libres (no catalogadas) no restringen edad.
 class Division {
   #nombre;
   #desde;
@@ -9,10 +10,10 @@ class Division {
 
   constructor(nombre) {
     const division = obtenerDivision(nombre);
-    if (!division) throw new Error(`Division/categoria desconocida: ${nombre}`);
-    this.#nombre = division.nombre;
-    this.#desde = division.desde;
-    this.#hasta = division.hasta;
+    this.#nombre = String(nombre || "").trim();
+    if (!this.#nombre) throw new Error("Division/categoria es obligatoria");
+    this.#desde = division ? division.desde : null;
+    this.#hasta = division ? division.hasta : null;
   }
 
   get nombre() {

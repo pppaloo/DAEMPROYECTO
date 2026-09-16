@@ -5,11 +5,16 @@ class TorneoRepository {
     const doc = await TorneoModel.create({
       nombre: torneo.nombre,
       actividad: torneo.actividad,
+      division: torneo.division,
+      formato: torneo.formato || "amistoso",
       anio: torneo.anio,
       semestre: torneo.semestre,
       estado: torneo.estado,
       grupos: torneo.grupos,
       formulario: torneo.formulario,
+      requisitos: torneo.requisitos || {},
+      fechaAperturaInscripcion: torneo.fechaAperturaInscripcion || null,
+      fechaCierreInscripcion: torneo.fechaCierreInscripcion || null,
     });
     return doc;
   }

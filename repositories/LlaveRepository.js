@@ -13,7 +13,7 @@ class LlaveRepository {
   async obtenerTodos(filtro = {}) {
     return LlaveModel.find(filtro)
       .populate({ path: "torneo", populate: { path: "actividad" } })
-      .populate("equipos")
+      .populate({ path: "equipos", populate: { path: "alumnos" } })
       .populate("ganador")
       .sort({ nivel: 1, orden: 1, createdAt: 1 })
       .lean();
@@ -22,7 +22,7 @@ class LlaveRepository {
   async obtenerPorId(id) {
     return LlaveModel.findById(id)
       .populate({ path: "torneo", populate: { path: "actividad" } })
-      .populate("equipos")
+      .populate({ path: "equipos", populate: { path: "alumnos" } })
       .populate("ganador")
       .lean();
   }

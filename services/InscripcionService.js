@@ -6,6 +6,16 @@ const AlumnoRepository = require("../repositories/AlumnoRepository");
 const ActividadModel = require("../models/actividad.model");
 const TorneoModel = require("../models/torneo.model");
 
+function calcularEdadInline(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const hoy = new Date();
+  const nac = new Date(fechaNacimiento);
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  const mes = hoy.getMonth() - nac.getMonth();
+  if (mes < 0 || (mes === 0 && hoy.getDate() < nac.getDate())) edad--;
+  return edad;
+}
+
 class InscripcionService {
   #inscripciones;
   #alumnos;
@@ -61,9 +71,54 @@ class InscripcionService {
     return this.#inscripciones.obtenerPorId(doc._id);
   }
 
-  async asociarTorneo(inscripcionId, torneoId) {
+  async asociarTorneo(inscripcionId, torneoId, usuario) {
     const inscripcion = await this.#inscripciones.obtenerPorId(inscripcionId);
     if (!inscripcion) throw new Error("Inscripcion no encontrada");
+    if (usuario.rol !== "admin" && String(inscripcion.establecimiento._id) !== String(usuario.establecimiento?._id)) {
+      throw new Error("No puede asociar una inscripcion de otro establecimiento");
+    }
+
+    const torneo = await TorneoModel.findById(torneoId).lean();
+    if (!torneo) throw new Error("Torneo no encontrado");
+
+    // Ventana de inscripcion del torneo programado.
+    const ahora = new Date();
+    if (torneo.fechaAperturaInscripcion && ahora < torneo.fechaAperturaInscripcion) {
+      throw new Error(
+        `Las inscripciones al torneo abren el ${new Date(torneo.fechaAperturaInscripcion).toLocaleDateString("es-CL")}`
+      );
+    }
+    if (torneo.fechaCierreInscripcion && ahora > torneo.fechaCierreInscripcion) {
+      throw new Error(
+        `Las inscripciones al torneo cerraron el ${new Date(torneo.fechaCierreInscripcion).toLocaleDateString("es-CL")}`
+      );
+    }
+
+    // Requisitos del torneo: edad min/max y genero sobre los alumnos inscritos.
+    const req = torneo.requisitos || {};
+    if (req.activo) {
+      const alumnos = inscripcion.alumnos || [];
+      if (req.edadMinima != null || req.edadMaxima != null) {
+        const fueraRango = alumnos.find((a) => {
+          const edad = a.calcularEdad ? a.calcularEdad() : calcularEdadInline(a.fechaNacimiento);
+          return (req.edadMinima != null && edad < req.edadMinima) || (req.edadMaxima != null && edad > req.edadMaxima);
+        });
+        if (fueraRango) {
+          throw new Error(`Hay alumnos fuera del rango de edad permitido (${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"})`);
+        }
+      }
+      if (req.genero && ["varones", "damas"].includes(req.genero)) {
+        const permitido = req.genero === "varones" ? "M" : "F";
+        const fueraGenero = alumnos.find((a) => a.genero && a.genero !== permitido && a.genero !== "mixto" && a.genero !== "");
+        if (fueraGenero) {
+          throw new Error(`El torneo es solo para ${req.genero === "varones" ? "varones" : "damas"}`);
+        }
+      }
+      if (!alumnos.length) {
+        throw new Error("Debe inscribir al menos un alumno antes de asociar el torneo");
+      }
+    }
+
     return this.#inscripciones.actualizar(inscripcionId, { torneo: torneoId, grupo: "" });
   }
 

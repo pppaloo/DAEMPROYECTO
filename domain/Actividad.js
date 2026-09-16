@@ -1,11 +1,14 @@
-const { AREAS, ESTADOS_ACTIVIDAD, DIVISIONES } = require("../constants/catalogos");
+const { AREAS, ESTADOS_ACTIVIDAD } = require("../constants/catalogos");
 
 // Actividad extraprogramatica publicada por el Admin DAEM.
-// Se clasifica por area (Deportiva | Artistico/Cultural) y puede
-// llevarse en una o mas divisiones. Incluye su calendario de encuentros.
+// Pertenece a una Seccion y se clasifica por area (Deportiva |
+// Artistico/Cultural). Lleva categorias, cada una con subcategorias
+// (ej. SUB 13 -> Damas/Varones), y su calendario de encuentros.
 class Actividad {
   #nombre;
   #area;
+  #seccion;
+  #categorias;
   #divisiones;
   #anio;
   #estado;
@@ -26,11 +29,14 @@ class Actividad {
     fechaCierreInscripcion = null,
     recintos = [],
     edadMinima = null,
-    edadMaxima = null
+    edadMaxima = null,
+    seccion = null,
+    categorias = []
   ) {
     this.nombre = nombre;
     this.area = area;
     this.divisiones = divisiones;
+    this.categorias = categorias;
     this.anio = anio;
     this.estado = estado;
     this.fechaAperturaInscripcion = fechaAperturaInscripcion;
@@ -38,6 +44,7 @@ class Actividad {
     this.recintos = recintos;
     this.edadMinima = edadMinima;
     this.edadMaxima = edadMaxima;
+    this.#seccion = seccion || null;
     this.#encuentros = [];
   }
 
@@ -71,12 +78,46 @@ class Actividad {
   }
 
   set divisiones(valor) {
-    const lista = Array.isArray(valor) ? valor : [valor];
-    const validas = lista.filter((d) => DIVISIONES.some((x) => x.nombre === d));
-    if (validas.length === 0) {
-      throw new Error("Debe indicar al menos una division valida");
+    const lista = (Array.isArray(valor) ? valor : [valor])
+      .map((d) => String(d || "").trim())
+      .filter(Boolean);
+    if (lista.length === 0) {
+      // Las categorias se definen en #categorias; si no hay ninguna,
+      // la actividad es libre (sin categorias fijas).
+      this.#divisiones = [];
+      return;
     }
-    this.#divisiones = [...new Set(validas)];
+    this.#divisiones = [...new Set(lista)];
+  }
+
+  get seccion() {
+    return this.#seccion;
+  }
+
+  set seccion(valor) {
+    this.#seccion = valor || null;
+  }
+
+  get categorias() {
+    return this.#categorias;
+  }
+
+  set categorias(valor) {
+    const lista = Array.isArray(valor) ? valor : [];
+    const norm = lista
+      .map((c) => {
+        const nombre = String(c.nombre || "").trim();
+        if (!nombre) return null;
+        const sub = (Array.isArray(c.subcategorias) ? c.subcategorias : [])
+          .map((s) => String(s || "").trim())
+          .filter(Boolean);
+        return { nombre, subcategorias: [...new Set(sub)] };
+      })
+      .filter(Boolean);
+    this.#categorias = norm;
+    if (norm.length) {
+      this.#divisiones = norm.map((c) => c.nombre);
+    }
   }
 
   get anio() {
@@ -179,6 +220,8 @@ get edadMinima() {
     return {
       nombre: this.#nombre,
       area: this.#area,
+      seccion: this.#seccion,
+      categorias: this.#categorias,
       divisiones: this.#divisiones,
       anio: this.#anio,
       estado: this.#estado,

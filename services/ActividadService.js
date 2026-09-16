@@ -19,7 +19,9 @@ class ActividadService {
       datos.fechaCierreInscripcion,
       datos.recintos,
       datos.edadMinima,
-      datos.edadMaxima
+      datos.edadMaxima,
+      datos.seccion,
+      datos.categorias
     );
     if (Array.isArray(datos.encuentros)) {
       for (const e of datos.encuentros) {
@@ -55,6 +57,13 @@ class ActividadService {
       new Actividad(existente.nombre, existente.area, datos.divisiones, existente.anio);
       actualizar.divisiones = datos.divisiones;
     }
+    if (datos.categorias !== undefined) {
+      const dom = new Actividad(existente.nombre, existente.area, [], existente.anio);
+      dom.categorias = datos.categorias;
+      actualizar.categorias = dom.categorias;
+      actualizar.divisiones = dom.divisiones;
+    }
+    if (datos.seccion !== undefined) actualizar.seccion = datos.seccion || null;
     if (datos.anio) actualizar.anio = datos.anio;
     if (datos.estado) actualizar.estado = datos.estado;
     if (datos.fechaAperturaInscripcion !== undefined) {

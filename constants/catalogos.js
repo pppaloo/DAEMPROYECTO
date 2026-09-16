@@ -22,6 +22,7 @@ const DEPENDENCIAS = {
 const DIVISIONES = [
   { nombre: "MINIS", desde: 2016, hasta: 2018 },
   { nombre: "SUB 13", desde: 2013, hasta: 2015 },
+  { nombre: "SUB 14", desde: 2012, hasta: 2014 },
   { nombre: "JUVENIL", desde: 2009, hasta: 2012 },
   { nombre: "DAMAS", desde: null, hasta: null },
   { nombre: "VARONES", desde: null, hasta: null },

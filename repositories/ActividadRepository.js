@@ -5,6 +5,8 @@ class ActividadRepository {
     const doc = await ActividadModel.create({
       nombre: actividad.nombre,
       area: actividad.area,
+      seccion: actividad.seccion,
+      categorias: actividad.categorias,
       divisiones: actividad.divisiones,
       anio: actividad.anio,
       estado: actividad.estado,

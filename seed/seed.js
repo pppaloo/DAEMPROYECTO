@@ -5,13 +5,16 @@ const AuthService = require("../services/AuthService");
 const EstablecimientoService = require("../services/EstablecimientoService");
 const UsuarioService = require("../services/UsuarioService");
 const ActividadService = require("../services/ActividadService");
+const SeccionService = require("../services/SeccionService");
 const TorneoService = require("../services/TorneoService");
 const InscripcionService = require("../services/InscripcionService");
 const ValoracionService = require("../services/ValoracionService");
+const EquipoService = require("../services/EquipoService");
 
 const EstablecimientoModel = require("../models/establecimiento.model");
 const UsuarioModel = require("../models/usuario.model");
 const ActividadModel = require("../models/actividad.model");
+const SeccionModel = require("../models/seccion.model");
 const TorneoModel = require("../models/torneo.model");
 const InscripcionModel = require("../models/inscripcion.model");
 const ValoracionModel = require("../models/valoracion.model");
@@ -32,11 +35,13 @@ const COORDINADORES = [
   { rut: "55555555-5", nombre: "Carolina Diaz", email: "carolina@d868.cl", colegio: "D-868" },
 ];
 
-const ACTIVIDADES = [
+const ACTIVIDADES_BASE = [
   {
+    clave: "Futbol",
     nombre: "Futbol",
     area: "Deportiva",
-    divisiones: ["MINIS", "SUB 13", "JUVENIL", "VARONES"],
+    seccion: null,
+    divisiones: ["MINIS", "SUB 13", "SUB 14", "JUVENIL"],
     recintos: ["Cancha 1", "Polideportivo"],
     encuentros: [
       { fecha: "2026-04-15", hora: "10:00", lugar: "Cancha 1" },
@@ -44,26 +49,87 @@ const ACTIVIDADES = [
     ],
   },
   {
+    clave: "Basquetbol",
     nombre: "Basquetbol",
     area: "Deportiva",
+    seccion: null,
     divisiones: ["SUB 13", "JUVENIL", "DAMAS"],
     recintos: ["Polideportivo", "Gimnasio B"],
     encuentros: [{ fecha: "2026-04-18", hora: "11:00", lugar: "Polideportivo" }],
   },
   {
+    clave: "Danza",
     nombre: "Danza",
     area: "Artístico/Cultural",
-    divisiones: ["DAMAS", "VARONES", "JUVENIL"],
+    seccion: null,
+    divisiones: ["DAMAS", "JUVENIL"],
     recintos: ["Sala de Artes"],
     encuentros: [{ fecha: "2026-05-02", hora: "17:00", lugar: "Sala de Artes" }],
   },
   {
+    clave: "Ajedrez",
     nombre: "Ajedrez",
     area: "Deportiva",
+    seccion: null,
     divisiones: ["MINIS", "SUB 13"],
     recintos: ["Sala 204"],
     encuentros: [{ fecha: "2026-05-09", hora: "09:30", lugar: "Sala 204" }],
   },
+];
+
+// Categorias del listado "Creacion de Actividades Extraescolares".
+// Seccion -> Actividad (disciplina) -> Categoria -> Subcategoria.
+const DC = (nombre, subcategorias = []) => ({ nombre, subcategorias });
+const DV = ["Damas", "Varones"];
+
+const SECCIONES = [
+  { clave: "JDM", nombre: "Juegos Deportivos Municipales de la Educación Pública", area: "Deportiva" },
+  { clave: "JDE", nombre: "Juegos Deportivos Escolares (JDE) Intercursos", area: "Deportiva" },
+  { clave: "ENCMINI", nombre: "Encuentros Mini", area: "Deportiva" },
+  { clave: "DIAESP", nombre: "Días Especiales", area: "Deportiva" },
+  { clave: "ARTISTICO", nombre: "Artístico Cultural", area: "Artístico/Cultural" },
+  { clave: "MUESTRAS", nombre: "Muestras Culturales", area: "Artístico/Cultural" },
+];
+
+// Disciplinas segun el listado (Juegos Deportivos Municipales de la
+// Educacion Publica): los torneos municipales se despliegan por categoria.
+const ACTIVIDADES_JDM = [
+  "Futsal", "Basquetbol", "Voleibol", "Balonmano",
+  "Tenis de mesa", "Ajedrez", "Atletismo",
+];
+
+// En JUVENIL el listado no incluye Futsal (solo SUB 13).
+const ACTIVIDADES_JDM_JUVENIL = [
+  "Basquetbol", "Voleibol", "Balonmano",
+  "Tenis de mesa", "Ajedrez", "Atletismo",
+];
+
+// JDE Intercursos: SUB 14 y JUVENIL. Futsal solo en SUB 14.
+const ACTIVIDADES_JDE = [
+  "Futsal", "Basquetbol", "Voleibol", "Balonmano", "Tenis de mesa",
+  "Ajedrez", "Atletismo", "Para atletismo", "Ciclismo", "Judo", "Natación",
+];
+const ACTIVIDADES_JDE_JUVENIL = [
+  "Basquetbol", "Voleibol", "Balonmano", "Tenis de mesa",
+  "Ajedrez", "Atletismo", "Para atletismo", "Ciclismo", "Judo", "Natación",
+];
+
+const ACTIVIDADES_ARTISTICAS = [
+  { nombre: "Cueca", categorias: [DC("Huasa", ["Básica", "Media"]), DC("Lugareña", ["Básica", "Media"])] },
+  { nombre: "Dibujo y pintura", categorias: ["NT1 y NT2", "1° a 2° Básico", "3° a 4° Básico", "5° a 6° Básico", "7° a 8° Básico", "1° a 4° Medio"].map((c) => DC(c)) },
+  { nombre: "Declamación", categorias: ["NT1 y NT2", "1° a 4° Básico", "5° a 8° Básico", "1° a 4° Medio"].map((c) => DC(c)) },
+  { nombre: "Festival de la voz", categorias: ["1° a 4° Básico", "5° a 8° Básico", "1° a 4° Medio", "Docentes/Asistentes de la educación"].map((c) => DC(c)) },
+  { nombre: "Team de baile", categorias: ["1° Ciclo Básica", "2° Ciclo Básica", "Enseñanza Media"].map((c) => DC(c)) },
+];
+
+const ACTIVIDADES_MUESTRAS = [
+  "Muestra de Danzas Folclóricas", "Muestra de conjuntos folclóricos",
+  "Pañuelos al viento", "Teatro",
+];
+
+const ACTIVIDADES_MINI = [
+  "Mini Basquetbol", "Mini Voleibol", "Mini Balonmano", "Mini Futsal",
+  "Mini Tenis de mesa", "Mini Atletismo", "Mini Ajedrez",
 ];
 
 // Filtro de division solamente para valoraciones de ejemplo (Futbol/Ajedrez).
@@ -88,6 +154,7 @@ async function ejecutarSeed() {
   const torService = new TorneoService();
   const inscService = new InscripcionService();
   const valService = new ValoracionService();
+  const equipoService = new EquipoService();
 
   const anio = 2026;
   const semestre = 1;
@@ -130,17 +197,121 @@ async function ejecutarSeed() {
     }
   }
 
-  // 4) Actividades
-  const idsActividades = {};
-  if (!(await existenDocumentos(ActividadModel))) {
-    for (const a of ACTIVIDADES) {
-      const creada = await actService.crear({ ...a, anio, estado: "en_inscripcion" });
-      idsActividades[a.nombre] = creada._id;
-      console.log("[SEED] Actividad:", a.nombre, "(" + a.area + ")");
+  // 3b) Secciones (eventos que agrupan actividades)
+  const idsSecciones = {};
+  const secService = new SeccionService();
+  if (!(await existenDocumentos(SeccionModel))) {
+    for (const s of SECCIONES) {
+      const creada = await secService.crear({ nombre: s.nombre, area: s.area, anio });
+      idsSecciones[s.clave] = creada._id;
+      console.log("[SEED] Seccion:", s.nombre, "(" + s.area + ")");
     }
   } else {
-    for (const a of ACTIVIDADES) {
-      idsActividades[a.nombre] = (await ActividadModel.findOne({ nombre: a.nombre }).lean())._id;
+    for (const s of SECCIONES) {
+      const doc = await SeccionModel.findOne({ nombre: s.nombre }).lean();
+      idsSecciones[s.clave] = doc ? doc._id : null;
+    }
+  }
+
+  // 4) Actividades (base + listado extraescolar jerarquico)
+  const idsActividades = {};
+
+  async function crearActividadSiNoExiste(a) {
+    const filtro = { nombre: a.nombre, area: a.area };
+    if (a.seccion) filtro.seccion = a.seccion;
+    const existente = await ActividadModel.findOne(filtro).lean();
+    if (existente) return existente._id;
+    const creada = await actService.crear({ ...a, anio, estado: "en_inscripcion" });
+    console.log("[SEED] Actividad:", a.nombre, "(" + a.area + ")" + (a.seccion ? " [seccion]" : ""));
+    return creada._id;
+  }
+
+  async function sembrarActividades() {
+    for (const a of ACTIVIDADES_BASE) {
+      idsActividades[a.clave] = await crearActividadSiNoExiste(a);
+    }
+
+    const categoriasCon = (cats) =>
+      cats.map((c) => (typeof c === "string" ? { nombre: c, subcategorias: [] } : c));
+
+    // Juegos Deportivos Municipales: SUB 13 (Damas/Varones) y JUVENIL.
+    for (const disciplina of ACTIVIDADES_JDM) {
+      const categorias = [DC("SUB 13", DV)];
+      if (ACTIVIDADES_JDM_JUVENIL.includes(disciplina)) categorias.push(DC("JUVENIL", DV));
+      const id = await crearActividadSiNoExiste({
+        clave: disciplina,
+        nombre: disciplina,
+        area: "Deportiva",
+        seccion: idsSecciones.JDM,
+        categorias,
+      });
+      idsActividades[`JDM_${disciplina}`] = id;
+    }
+
+    // JDE Intercursos: SUB 14 (Damas/Varones) y JUVENIL.
+    for (const disciplina of ACTIVIDADES_JDE) {
+      const categorias = [DC("SUB 14", DV)];
+      if (ACTIVIDADES_JDE_JUVENIL.includes(disciplina)) categorias.push(DC("JUVENIL", DV));
+      const id = await crearActividadSiNoExiste({
+        clave: disciplina,
+        nombre: disciplina,
+        area: "Deportiva",
+        seccion: idsSecciones.JDE,
+        categorias,
+      });
+      idsActividades[`JDE_${disciplina}`] = id;
+    }
+
+    // Encuentros Mini: disciplinas mini (sin categorias fijas).
+    for (const disciplina of ACTIVIDADES_MINI) {
+      await crearActividadSiNoExiste({
+        clave: disciplina,
+        nombre: disciplina,
+        area: "Deportiva",
+        seccion: idsSecciones.ENCMINI,
+        categorias: [],
+      });
+    }
+
+    // Dias Especiales (no competitivos): sin categorias.
+    for (const nombre of ["Día de la Actividad Física", "Día del Extraescolar"]) {
+      await crearActividadSiNoExiste({
+        clave: nombre,
+        nombre,
+        area: "Deportiva",
+        seccion: idsSecciones.DIAESP,
+        categorias: [],
+      });
+    }
+
+    // Artistico Cultural: actividades con categorias libres.
+    for (const a of ACTIVIDADES_ARTISTICAS) {
+      await crearActividadSiNoExiste({
+        clave: a.nombre,
+        nombre: a.nombre,
+        area: "Artístico/Cultural",
+        seccion: idsSecciones.ARTISTICO,
+        categorias: categoriasCon(a.categorias),
+      });
+    }
+
+    // Muestras Culturales: actividades con Enseñanza Basica / Media.
+    for (const nombre of ACTIVIDADES_MUESTRAS) {
+      await crearActividadSiNoExiste({
+        clave: nombre,
+        nombre,
+        area: "Artístico/Cultural",
+        seccion: idsSecciones.MUESTRAS,
+        categorias: [DC("Enseñanza Básica"), DC("Enseñanza Media")],
+      });
+    }
+  }
+
+  if (!(await existenDocumentos(ActividadModel))) {
+    await sembrarActividades();
+  } else {
+    for (const a of ACTIVIDADES_BASE) {
+      idsActividades[a.clave] = (await ActividadModel.findOne({ nombre: a.nombre }).lean())._id;
     }
   }
 
@@ -180,20 +351,24 @@ async function ejecutarSeed() {
     console.log("[SEED] Director: Director DAEM (solo lectura)");
   }
 
-  // 6) Torneo de Futbol
-  let torneo = await TorneoModel.findOne({ nombre: "Torneo Comunal de Futbol 2026" }).lean();
+  // 6) Torneo de Futbol (una categoria especifica de la actividad)
+  let torneo = await TorneoModel.findOne({ nombre: "Torneo Comunal de Futbol SUB 13 2026" }).lean();
   if (!torneo) {
     const doc = await torService.crear({
-      nombre: "Torneo Comunal de Futbol 2026",
+      nombre: "Torneo Comunal de Futbol SUB 13 2026",
       actividad: idsActividades.Futbol,
+      division: "SUB 13",
       anio,
       semestre,
       estado: "inscripciones",
-      grupos: ["Grupo A", "Grupo B"],
+      grupos: ["Llave"],
       formulario: { permiteEncargados: true, fechaToPe: new Date("2026-03-30") },
+      requisitos: { activo: false, edadMinima: null, edadMaxima: null, genero: "" },
+      fechaAperturaInscripcion: new Date(`2026-01-01`),
+      fechaCierreInscripcion: new Date(`2027-12-31`),
     });
     torneo = await TorneoModel.findById(doc._id).lean();
-    console.log("[SEED] Torneo:", torneo.nombre);
+    console.log("[SEED] Torneo:", torneo.nombre, "|", torneo.division);
   }
 
   // 7) Inscripciones de establecimientos al torneo (una aceptada, otra en proceso)
@@ -209,7 +384,7 @@ async function ejecutarSeed() {
       },
       { rol: "admin", rut: ROLES_ADMIN.rut }
     );
-    await inscService.asociarTorneo(inscA._id, torneo._id);
+    await inscService.asociarTorneo(inscA._id, torneo._id, { rol: "admin", rut: ROLES_ADMIN.rut });
     await inscService.cambiarEstado(inscA._id, "aceptada", { rol: "admin" });
 
     const inscB = await inscService.crear(
@@ -220,7 +395,7 @@ async function ejecutarSeed() {
       },
       { rol: "admin", rut: ROLES_ADMIN.rut }
     );
-    await inscService.asociarTorneo(inscB._id, torneo._id);
+    await inscService.asociarTorneo(inscB._id, torneo._id, { rol: "admin", rut: ROLES_ADMIN.rut });
     await inscService.cambiarEstado(inscB._id, "aceptada", { rol: "admin" });
 
     // Alumnos de ejemplo en la inscripcion aceptada (validan categoria SUB 13).
@@ -247,6 +422,31 @@ async function ejecutarSeed() {
       { rol: "admin", rut: ROLES_ADMIN.rut }
     );
 
+    // Alumnos para el resto de inscripciones del torneo: el pool de
+    // estudiantes permite formar equipos mixtos (sorteo automatico).
+    await inscService.agregarAlumno(
+      inscB._id,
+      {
+        rut: "17171717-5",
+        nombre: "Fernando Silva",
+        genero: "M",
+        fechaNacimiento: "2014-11-03",
+        apoderado: "Rosa Silva",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.agregarAlumno(
+      inscB._id,
+      {
+        rut: "18181818-2",
+        nombre: "Camila Nunez",
+        genero: "F",
+        fechaNacimiento: "2013-06-21",
+        apoderado: "Diego Nunez",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+
     const inscB2 = await inscService.crear(
       {
         establecimiento: idsColegios["C-204"],
@@ -255,8 +455,19 @@ async function ejecutarSeed() {
       },
       { rol: "admin", rut: ROLES_ADMIN.rut }
     );
-    await inscService.asociarTorneo(inscB2._id, torneo._id);
+    await inscService.asociarTorneo(inscB2._id, torneo._id, { rol: "admin", rut: ROLES_ADMIN.rut });
     await inscService.cambiarEstado(inscB2._id, "aceptada", { rol: "admin" });
+    await inscService.agregarAlumno(
+      inscB2._id,
+      {
+        rut: "20202020-8",
+        nombre: "Mateo Paredes",
+        genero: "M",
+        fechaNacimiento: "2017-04-12",
+        apoderado: "Andrea Paredes",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
 
     const inscC = await inscService.crear(
       {
@@ -266,8 +477,19 @@ async function ejecutarSeed() {
       },
       { rol: "admin", rut: ROLES_ADMIN.rut }
     );
-    await inscService.asociarTorneo(inscC._id, torneo._id);
+    await inscService.asociarTorneo(inscC._id, torneo._id, { rol: "admin", rut: ROLES_ADMIN.rut });
     await inscService.cambiarEstado(inscC._id, "aceptada", { rol: "admin" });
+    await inscService.agregarAlumno(
+      inscC._id,
+      {
+        rut: "23232323-K",
+        nombre: "Diego Fuentes",
+        genero: "M",
+        fechaNacimiento: "2010-09-19",
+        apoderado: "Sara Fuentes",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
 
     // A-59 (coordinador Pedro Gonzalez) recibe inscripciones aceptadas en varias
     // categorias para que pueda agregar estudiantes a mas de una division.
@@ -301,16 +523,92 @@ async function ejecutarSeed() {
     );
     await inscService.cambiarEstado(inscA59Basquet._id, "aceptada", { rol: "admin" });
 
+    // Ajedrez: inscripciones aceptadas con alumnos para el desglose por
+    // categoria y el total de participantes del modulo Actividades.
+    const inscAjeA = await inscService.crear(
+      {
+        establecimiento: idsColegios["A-59"],
+        actividad: idsActividades.Ajedrez,
+        division: "MINIS",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.cambiarEstado(inscAjeA._id, "aceptada", { rol: "admin" });
+    await inscService.agregarAlumno(
+      inscAjeA._id,
+      {
+        rut: "14141414-3",
+        nombre: "Emma Soto",
+        genero: "F",
+        fechaNacimiento: "2017-03-22",
+        apoderado: "Claudia Soto",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.agregarAlumno(
+      inscAjeA._id,
+      {
+        rut: "15151515-0",
+        nombre: "Benjamin Cruz",
+        genero: "M",
+        fechaNacimiento: "2016-07-08",
+        apoderado: "Rosa Cruz",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+
+    const inscAjeB = await inscService.crear(
+      {
+        establecimiento: idsColegios["C-204"],
+        actividad: idsActividades.Ajedrez,
+        division: "SUB 13",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+    await inscService.cambiarEstado(inscAjeB._id, "aceptada", { rol: "admin" });
+    await inscService.agregarAlumno(
+      inscAjeB._id,
+      {
+        rut: "16161616-8",
+        nombre: "Valentina Pino",
+        genero: "F",
+        fechaNacimiento: "2013-09-30",
+        apoderado: "Jorge Pino",
+      },
+      { rol: "admin", rut: ROLES_ADMIN.rut }
+    );
+
     console.log("[SEED] Inscripciones y alumnos de ejemplo creados");
     void coordB112;
   }
 
   // 7b) Sorteo de ejemplo y fechas de encuentro (para la agenda de torneos)
   const LlaveModel = require("../models/llave.model");
+  const EquipoModel = require("../models/equipo.model");
+  const tieneEquipos = await EquipoModel.countDocuments({ torneo: torneo._id });
+  if (tieneEquipos === 0) {
+    try {
+      await equipoService.sortear(torneo._id, { cantidad: 4 });
+      console.log("[SEED] Equipos sorteados para el torneo de Futbol");
+    } catch (e) {
+      console.log("[SEED] Sorteo de equipos omitido:", e.message);
+    }
+  }
   const tieneLlaves = await LlaveModel.countDocuments({ torneo: torneo._id });
   if (tieneLlaves === 0) {
     try {
       await torService.ejecutarSorteo(torneo._id);
+      const llavesGrupo = await LlaveModel.find({ torneo: torneo._id, nivel: 0 }).lean();
+      // Juega algunos cruces de la fase de grupos para una tabla de puntajes viva.
+      const marcadores = [1, 2, 0];
+      for (let i = 0; i < llavesGrupo.length && i < 3; i++) {
+        const l = llavesGrupo[i];
+        if (!l.equipos || l.equipos.length < 2) continue;
+        const pa = marcadores[i % marcadores.length];
+        const pb = pa === 0 ? 2 : pa - 1;
+        await torService.registrarResultado(l._id, { puntajeA: pa, puntajeB: pb });
+      }
+      await torService.ejecutarBracket(torneo._id);
       const hoy = new Date();
       const fecha = (df) => { const d = new Date(df); d.setHours(0,0,0,0); return d; };
       await LlaveModel.updateMany(
