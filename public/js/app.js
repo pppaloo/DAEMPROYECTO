@@ -5,6 +5,86 @@
 const $ = (sel) => document.querySelector(sel);
 const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// ---------- Combobox con busqueda ----------
+// comboHtml(id, idsSugerencia) crea: <input type="text" id="id"> + <div id="idsSugerencia">.
+// initCombo(id, opciones, onSelect) con opciones [{ valor, texto, extra }] permite escribir
+// para filtrar la lista de sugerencias.
+function comboHtml(id, placeholder = "Escriba para buscar...") {
+  return `<span class="cb"><input type="text" id="${id}" class="cb-txt" placeholder="${esc(placeholder)}" autocomplete="off"></span>`;
+}
+function initCombo(id, opciones, onSelect, placeholder) {
+  const inp = $("#" + id);
+  if (!inp) return;
+  inp.placeholder = placeholder || "Escriba para buscar...";
+  let sug = document.getElementById(id + "-sug");
+  if (!sug) {
+    sug = document.createElement("div");
+    sug.id = id + "-sug";
+    sug.className = "cb-sug";
+    const cb = inp.closest(".cb") || inp.parentElement;
+    cb.appendChild(sug);
+  }
+  const pintar = (filtro) => {
+    const f = (filtro || "").toLowerCase().trim();
+    const vis = opciones.filter((o) => !f || String(o.texto).toLowerCase().includes(f)).slice(0, 60);
+    sug.innerHTML = vis.length
+      ? vis.map((o, i) => `<div class="cb-item" data-i="${i}">${esc(o.texto)}</div>`).join("")
+      : '<div class="cb-item muted">Sin coincidencias</div>';
+    sug.classList.add("abierta");
+  };
+  inp.addEventListener("input", () => {
+    if (onSelect) {
+      const exacto = opciones.find((o) => String(o.valor) === inp.value);
+      if (exacto) { onSelect(exacto); sug.classList.remove("abierta"); return; }
+    }
+    pintar(inp.value);
+  });
+  inp.addEventListener("focus", () => pintar(inp.value));
+  inp.addEventListener("blur", () => setTimeout(() => sug.classList.remove("abierta"), 150));
+  inp.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const items = [...sug.querySelectorAll(".cb-item")];
+      const idx = items.findIndex((el) => el.classList.contains("sel"));
+      let n = idx === -1 ? 0 : (e.key === "ArrowDown" ? idx + 1 : idx - 1);
+      if (n < 0) n = items.length - 1;
+      if (n >= items.length) n = 0;
+      items.forEach((el) => el.classList.remove("sel"));
+      items[n] && items[n].classList.add("sel");
+    }
+    if (e.key === "Enter") {
+      const sel = sug.querySelector(".cb-item.sel");
+      if (sel) { sel.click(); }
+    }
+  });
+  sug.addEventListener("mousedown", (e) => {
+    const it = e.target.closest(".cb-item");
+    if (!it) return;
+    e.preventDefault();
+    const o = opciones[Number(it.dataset.i)];
+    if (!o) return;
+    inp.value = o.texto;
+    if (onSelect) onSelect(o);
+    sug.classList.remove("abierta");
+  });
+}
+
+// Opciones combinadas "Actividad - Categoria": por cada actividad y cada division.
+function opcionesActividadCategoria(act) {
+  const out = [];
+  act.forEach((a) => {
+    const divs = (a.divisiones && a.divisiones.length) ? a.divisiones : [""];
+    divs.forEach((d) => {
+      out.push({
+        valor: String(a._id),
+        texto: d ? `${a.nombre} - ${d}` : a.nombre,
+        extra: { actividad: String(a._id), division: d, nombre: a.nombre },
+      });
+    });
+  });
+  return out;
+}
+
 let CAT = {}; // catalogos cargados
 
 function cargarCatalogos() {
@@ -105,21 +185,16 @@ const MenuPorRol = {
   ],
   coordinador: [
     { clave: "coordResumen", label: "Resumen" },
-    { clave: "coordEncargados", label: "Encargados" },
-    { clave: "coordInscribir", label: "Cartelera / Inscribir" },
+    { clave: "coordLectores", label: "Lectores" },
+    { clave: "coordInscribir", label: "Postulaciones" },
+    { clave: "coordTorneos", label: "Postular Torneos" },
     { clave: "coordSolicitudes", label: "Mis Solicitudes" },
     { clave: "coordNomina", label: "Nomina Estudiantes" },
   ],
-  encargado: [
-    { clave: "encAgenda", label: "Mi Agenda" },
-    { clave: "encAlumnos", label: "Mis Alumnos" },
-    { clave: "encSolicitudes", label: "Solicitudes" },
-  ],
-  director: [
-    { clave: "directorResumen", label: "Resumen" },
-    { clave: "directorAgenda", label: "Agenda" },
-    { clave: "directorEstablecimientos", label: "Establecimientos" },
-    { clave: "directorRanking", label: "Ranking Cumplimiento" },
+  lector: [
+    { clave: "lectorResumen", label: "Resumen" },
+    { clave: "lectorEstudiantes", label: "Estudiantes" },
+    { clave: "lectorAgenda", label: "Agenda" },
   ],
 };
 
@@ -136,17 +211,14 @@ const PANELES = {
   adminAgenda: () => CargarPanel(panelAdminAgenda),
   adminReportes: () => CargarPanel(panelAdminReportes),
   coordResumen: () => CargarPanel(panelCoordResumen),
-  coordEncargados: () => CargarPanel(panelCoordEncargados),
+  coordLectores: () => CargarPanel(panelCoordLectores),
   coordInscribir: () => CargarPanel(panelCoordInscribir),
+  coordTorneos: () => CargarPanel(panelCoordTorneos),
   coordSolicitudes: () => CargarPanel(panelCoordSolicitudes),
   coordNomina: () => CargarPanel(panelCoordNomina),
-  encAgenda: () => CargarPanel(panelEncAgenda),
-  encAlumnos: () => CargarPanel(panelEncAlumnos),
-  encSolicitudes: () => CargarPanel(panelEncSolicitudes),
-  directorResumen: () => CargarPanel(panelDirectorResumen),
-  directorAgenda: () => CargarPanel(panelAdminAgenda),
-  directorEstablecimientos: () => CargarPanel(panelDirectorEstablecimientos),
-  directorRanking: () => CargarPanel(panelDirectorRanking),
+  lectorResumen: () => CargarPanel(panelLectorResumen),
+  lectorEstudiantes: () => CargarPanel(panelLectorEstudiantes),
+  lectorAgenda: () => CargarPanel(panelAdminAgenda),
 };
 
 async function panelBienvenida() {
@@ -279,16 +351,17 @@ async function panelAdminEstablecimientos() {
 
 async function panelAdminUsuarios() {
   const [usuarios, est] = await Promise.all([API.usuarios(), API.establecimientos()]);
+  const opEst = est.map((e) => ({ valor: String(e._id), texto: `${e.codigo} - ${e.nombre}` }));
   contenido(
     `<div class="encabezado"><h2 class="pagina">Usuarios</h2><button class="btn btn-primario2" id="btn-nuevo-usr">+ Nuevo</button></div>
      <div id="form-nuevo-usr" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>RUT</label><input id="usr-rut"></div>
          <div class="campo"><label>Nombre</label><input id="usr-nombre"></div>
-         <div class="campo"><label>Rol</label><select id="usr-rol"><option value="coordinador">Coordinador</option><option value="encargado">Encargado</option></select></div>
+         <div class="campo"><label>Rol</label><select id="usr-rol"><option value="coordinador">Coordinador</option><option value="lector">Lector</option></select></div>
          <div class="campo"><label>Clave</label><input id="usr-clave"></div>
          <div class="campo"><label>Establecimiento</label>
-           <select id="usr-est"><option value="">--</option>${est.map((e) => `<option value="${e._id}">${esc(e.codigo)} - ${esc(e.nombre)}</option>`).join("")}</select></div>
+           ${comboHtml("usr-est-txt", "Buscar establecimiento...")}<input type="hidden" id="usr-est"></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-usr">Guardar</button>
      </div>
@@ -296,6 +369,7 @@ async function panelAdminUsuarios() {
      <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td></tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nuevo-usr").onclick = () => $("#form-nuevo-usr").classList.toggle("oculta");
+  initCombo("usr-est-txt", opEst, (o) => { $("#usr-est").value = o.valor; }, "Buscar establecimiento...");
   $("#btn-guardar-usr").onclick = async () => {
     try {
       await API.crearUsuario({
@@ -445,48 +519,64 @@ async function panelAdminActividades() {
        <button class="btn btn-mini" id="btn-cancelar-act">Cancelar</button>
      </div>
 
-     ${grupos.map((g) => `
-       <h3 class="subtitulo-seccion">${esc(g.seccion)}</h3>
-       ${g.items.map((a) => {
-         const idA = String(a._id);
-         const ahora = new Date();
-         const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
-         const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
-         const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
-         const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
-         const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
-         return `<div class="tarjeta act-tarjeta">
-          <button type="button" class="act-titulo" data-toggle="${idA}" aria-expanded="false">
-            <span class="act-chevron">&#9656;</span><span class="act-nombre-titulo">${esc(a.nombre)}</span> <span class="badge-rol">${esc(a.area)}</span>
-          </button>
-          <div class="act-desg oculta" id="act-det-${idA}">
-            <div class="act-grid">
-              <div class="act-campo"><span class="act-label">Categorias</span><span>${renderCategorias(a)}</span></div>
-              <div class="act-campo"><span class="act-label">Seccion</span><span>${esc(a.seccionNombre)}</span></div>
-              <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
-              <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
-              <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
-              ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
-            </div>
-            <div class="act-desglose">
-              <h4 class="act-labdesg">Estudiantes por categoria</h4>
-              <table class="tabla-desglose">
-                <thead><tr><th>Categoria</th><th>Total</th><th>Varones</th><th>Damas</th></tr></thead>
-                <tbody>${filasDesglose(a, idA)}${totalesFila(a, idA)}</tbody>
-              </table>
-            </div>
-            <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
-            ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
-            <div class="seccion">
-              <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
-              <button class="btn btn-mini" data-agregar-encuentro="${idA}">Agregar Encuentro</button>
-              <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
-            </div>
-          </div>
-        </div>`;
-       }).join("")}`).join("")}`
+     ${grupos.map((g, gi) => `
+       <div class="tarjeta sec-tarjeta">
+        <button type="button" class="sec-titulo" data-toggle-sec="${gi}" aria-expanded="false">
+          <span class="act-chevron">&#9656;</span><span class="sec-nombre-titulo">${esc(g.seccion)}</span>
+          <span class="badge-rol">${g.items.length} ${g.items.length === 1 ? "actividad" : "actividades"}</span>
+        </button>
+        <div class="sec-desg oculta" id="sec-det-${gi}">
+        ${g.items.map((a) => {
+          const idA = String(a._id);
+          const ahora = new Date();
+          const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
+          const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
+          const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
+          const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
+          const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
+          return `<div class="tarjeta act-tarjeta">
+           <button type="button" class="act-titulo" data-toggle="${idA}" aria-expanded="false">
+             <span class="act-chevron">&#9656;</span><span class="act-nombre-titulo">${esc(a.nombre)}</span> <span class="badge-rol">${esc(a.area)}</span>
+           </button>
+           <div class="act-desg oculta" id="act-det-${idA}">
+             <div class="act-grid">
+               <div class="act-campo"><span class="act-label">Categorias</span><span>${renderCategorias(a)}</span></div>
+               <div class="act-campo"><span class="act-label">Seccion</span><span>${esc(a.seccionNombre)}</span></div>
+               <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
+               <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
+               <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
+               ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
+             </div>
+             <div class="act-desglose">
+               <h4 class="act-labdesg">Estudiantes por categoria</h4>
+               <table class="tabla-desglose">
+                 <thead><tr><th>Categoria</th><th>Total</th><th>Varones</th><th>Damas</th></tr></thead>
+                 <tbody>${filasDesglose(a, idA)}${totalesFila(a, idA)}</tbody>
+               </table>
+             </div>
+             <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
+             ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
+             <div class="seccion">
+               <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
+               <button class="btn btn-mini" data-agregar-encuentro="${idA}">Agregar Encuentro</button>
+               <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
+             </div>
+           </div>
+         </div>`;
+        }).join("")}
+        </div>
+      </div>`).join("")}`
   );
 
+  document.querySelectorAll(".sec-titulo").forEach((b) => {
+    b.onclick = () => {
+      const det = document.getElementById(`sec-det-${b.dataset.toggleSec}`);
+      const abierto = !det.classList.contains("oculta");
+      det.classList.toggle("oculta", abierto);
+      b.setAttribute("aria-expanded", String(!abierto));
+      b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+    };
+  });
   document.querySelectorAll(".act-titulo").forEach((b) => {
     b.onclick = () => {
       const det = document.getElementById(`act-det-${b.dataset.toggle}`);
@@ -588,13 +678,13 @@ function abrirFormActividad(a) {
 async function panelAdminTorneos() {
   const [tor, act] = await Promise.all([API.torneos(), API.actividades()]);
   window.__actividadesAdmin = act;
+  const opActCat = opcionesActividadCategoria(act);
   contenido(
     `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div>
      <div id="form-nuevo-tor" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>Nombre</label><input id="tor-nombre"></div>
-         <div class="campo"><label>Actividad</label><select id="tor-act">${act.map((a) => `<option value="${a._id}">${esc(a.nombre)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Categoria (division)</label><select id="tor-div"></select></div>
+         <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("tor-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="tor-act"><input type="hidden" id="tor-div"></div>
          <div class="campo"><label>Formato</label><select id="tor-formato"><option value="amistoso">Amistoso</option><option value="competitivo">Competitivo</option></select></div>
          <div class="campo"><label>Semestre</label><select id="tor-sem"><option value="1">1</option><option value="2">2</option></select></div>
        </div>
@@ -605,22 +695,27 @@ ${tor.map((t) => `<div class="tarjeta">
        <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} S${esc(t.semestre)} | Llave unica</p>
        ${programacionTorneoResumen(t)}
  <div class="seccion">
-        <button class="btn btn-mini" data-equipos="${t._id}">Equipos</button>
-        <button class="btn btn-mini" data-partidos="${t._id}" data-nombre="${esc(t.nombre)}" data-formato="${esc(t.formato || "amistoso")}">Partidos</button>
-        <button class="btn btn-primario2 btn-programar" data-programar="${t._id}">Programar Torneo</button>
-        <button class="btn btn-mini" data-llaves="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa del Torneo</button></div>
+       <button class="btn btn-mini" data-equipos="${t._id}">Equipos</button>
+       <button class="btn btn-mini" data-partidos="${t._id}" data-nombre="${esc(t.nombre)}" data-formato="${esc(t.formato || "amistoso")}">Partidos</button>
+       <button class="btn btn-primario2 btn-programar" data-programar="${t._id}">Programar Torneo</button>
+       <button class="btn btn-mini" data-llaves="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa del Torneo</button></div>
        <div class="form-programar oculta" data-form-programar="${t._id}" data-torneo-nombre="${esc(t.nombre)}" data-torneo-actividad="${esc(t.actividad ? t.actividad._id || t.actividad : "")}"></div>
       </div>`).join("")}`
   );
-  $("#btn-nuevo-tor").onclick = () => {
-    $("#form-nuevo-tor").classList.toggle("oculta");
-    cargarCategoriasTorneo();
-  };
-  $("#tor-act").onchange = cargarCategoriasTorneo;
+  $("#btn-nuevo-tor").onclick = () => $("#form-nuevo-tor").classList.toggle("oculta");
+  initCombo("tor-act-txt", opActCat, (o) => {
+    $("#tor-act").value = o.extra.actividad;
+    $("#tor-div").value = o.extra.division;
+    const nombre = $("#tor-nombre");
+    if (nombre && !nombre.value.trim()) {
+      nombre.value = o.extra.division ? `Torneo de ${o.extra.nombre} ${o.extra.division}` : `Torneo de ${o.extra.nombre}`;
+    }
+  });
   $("#btn-guardar-tor").onclick = async () => {
     try {
       const nombre = $("#tor-nombre").value.trim();
       if (!nombre) { alert("Indique el nombre del torneo"); return; }
+      if (!$("#tor-act").value) { alert("Seleccione una actividad (categoria)"); return; }
       await API.crearTorneo({
         nombre, actividad: $("#tor-act").value, division: $("#tor-div").value,
         semestre: Number($("#tor-sem").value), anio: new Date().getFullYear(),
@@ -739,7 +834,7 @@ function actualizarEstadoRequisitos(check) {
 // Vista de la fase de grupos (todos contra todos) en horizontal con
 // asignacion de horario (fecha, hora inicio, hora termino, lugar) que
 // se sincroniza con la agenda.
-async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amistoso") {
+async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amistoso", llaveIdFoco) {
   const llaves = await API.llaves(torneoId);
   const todas = (llaves || []).slice().sort((a, b) => (a.nivel || 0) - (b.nivel || 0) || (a.orden || 0) - (b.orden || 0));
 
@@ -748,7 +843,13 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
   const ORDEN_FASE = { "Fase de Grupos": 0, "Octavos de Final": 1, "Cuartos de Final": 2, "Semifinal": 3, Final: 4 };
 
   // Competitivo: solo los cruces del mapa del torneo (eliminatorias).
-  const visibles = formato === "competitivo" ? todas.filter((l) => (l.nivel || 0) >= 1) : todas;
+  // Si viene un partido concreto para editar, se incluye siempre aunque su fase
+  // no se muestre por defecto.
+  let visibles = formato === "competitivo" ? todas.filter((l) => (l.nivel || 0) >= 1) : todas;
+  if (llaveIdFoco) {
+    const foco = todas.find((l) => String(l._id) === String(llaveIdFoco));
+    if (foco && !visibles.some((l) => String(l._id) === String(foco._id))) visibles = visibles.concat(foco);
+  }
 
   const grupos = {};
   visibles.forEach((l) => {
@@ -816,6 +917,18 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
       } catch (err) { alert(err.message); }
     };
   });
+
+  // Viniendo desde la agenda (boton "Editar"): abrir el horario del partido
+  // correspondiente y resaltarlo para modificar el dia y guardar.
+  if (llaveIdFoco) {
+    const f = document.querySelector(`[data-horario-llave="${llaveIdFoco}"]`);
+    const card = f ? f.closest(".partido-horario") : null;
+    if (card) {
+      f.classList.remove("oculta");
+      card.style.boxShadow = "0 0 0 2px var(--acento)";
+      card.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }
 }
 
 let __torneoBracket = null;
@@ -886,21 +999,6 @@ async function generarBracket() {
 
 // Rellena el selector de categoria (division) con las categorias de la
 // actividad seleccionada y sugiere un nombre de torneo para esa categoria.
-function cargarCategoriasTorneo() {
-  const idAct = document.getElementById("tor-act")?.value;
-  const div = document.getElementById("tor-div");
-  if (!div || !idAct) return;
-  const actSel = (window.__actividadesAdmin || []).find((a) => String(a._id) === String(idAct));
-  const categorias = (actSel && actSel.divisiones) || [];
-  div.innerHTML = categorias.map((c) => `<option>${esc(c)}</option>`).join("");
-  const nombre = document.getElementById("tor-nombre");
-  if (nombre && !nombre.value.trim()) {
-    nombre.value = categorias.length
-      ? `Torneo de ${actSel.nombre} ${categorias[0]}`
-      : `Torneo de ${actSel ? actSel.nombre : ""}`;
-  }
-}
-
 // Panel de gestion de equipos del torneo (estudiantes de distintos
 // establecimientos agrupados en equipos por sorteo automatico o manual).
 async function panelAdminEquipos(torneoId) {
@@ -1402,15 +1500,17 @@ async function panelAdminInscripciones() {
   const [ins, est, act, tor] = await Promise.all([
     API.inscripciones(), API.establecimientos(), API.actividades(), API.torneos(),
   ]);
+  const opEst = est.map((e) => ({ valor: String(e._id), texto: `${e.codigo} - ${e.nombre}` }));
+  const opActCat = opcionesActividadCategoria(act);
+  const opTor = tor.map((t) => ({ valor: String(t._id), texto: t.nombre }));
   contenido(
     `<h2 class="pagina">Control de Inscripciones</h2>
      <div class="seccion"><button class="btn btn-primario2" id="btn-nueva-ins">+ Nueva Inscripcion</button></div>
      <div id="form-nueva-ins" class="tarjeta oculta">
        <div class="grid-2">
-         <div class="campo"><label>Establecimiento</label><select id="ins-est">${est.map((e) => `<option value="${e._id}">${esc(e.codigo)} - ${esc(e.nombre)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Actividad</label><select id="ins-act">${act.map((a) => `<option value="${a._id}">${esc(a.nombre)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Division</label><select id="ins-div">${(CAT.divisiones || []).map((d) => `<option>${esc(d.nombre)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Torneo</label><select id="ins-tor"><option value="">--</option>${tor.map((t) => `<option value="${t._id}">${esc(t.nombre)}</option>`).join("")}</select></div>
+         <div class="campo"><label>Establecimiento</label>${comboHtml("ins-est-txt", "Buscar establecimiento...")}<input type="hidden" id="ins-est"></div>
+         <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("ins-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="ins-act"><input type="hidden" id="ins-div"></div>
+         <div class="campo"><label>Torneo (opcional)</label>${comboHtml("ins-tor-txt", "Buscar torneo...")}<input type="hidden" id="ins-tor"></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-ins">Enviar</button>
      </div>
@@ -1424,6 +1524,12 @@ async function panelAdminInscripciones() {
      </tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nueva-ins").onclick = () => $("#form-nueva-ins").classList.toggle("oculta");
+  initCombo("ins-est-txt", opEst, (o) => { $("#ins-est").value = o.valor; }, "Buscar establecimiento...");
+  initCombo("ins-act-txt", opActCat, (o) => {
+    $("#ins-act").value = o.extra.actividad;
+    $("#ins-div").value = o.extra.division;
+  }, "Buscar actividad y categoria...");
+  initCombo("ins-tor-txt", opTor, (o) => { $("#ins-tor").value = o.valor; }, "Buscar torneo...");
   $("#btn-guardar-ins").onclick = async () => {
     try {
       const nuevo = await API.crearInscripcion({ establecimiento: $("#ins-est").value, actividad: $("#ins-act").value, division: $("#ins-div").value });
@@ -1442,12 +1548,14 @@ async function panelAdminInscripciones() {
 
 async function panelAdminValoraciones() {
   const [est, act] = await Promise.all([API.establecimientos(), API.actividades()]);
+  const opEst = est.map((e) => ({ valor: String(e._id), texto: `${e.codigo} - ${e.nombre}` }));
+  const opActCat = opcionesActividadCategoria(act);
   contenido(
     `<div class="encabezado"><h2 class="pagina">Ranking de Cumplimiento</h2><button class="btn btn-primario2" id="btn-nueva-val">+ Asignar</button></div>
      <div id="form-nueva-val" class="tarjeta oculta">
        <div class="grid-2">
-         <div class="campo"><label>Establecimiento</label><select id="val-est">${est.map((e) => `<option value="${e._id}">${esc(e.codigo)} - ${esc(e.nombre)}</option>`).join("")}</select></div>
-         <div class="campo"><label>Actividad</label><select id="val-act">${act.map((a) => `<option value="${a._id}">${esc(a.nombre)}</option>`).join("")}</select></div>
+         <div class="campo"><label>Establecimiento</label>${comboHtml("val-est-txt", "Buscar establecimiento...")}<input type="hidden" id="val-est"></div>
+         <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("val-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="val-act"></div>
          <div class="campo"><label>Estado</label><select id="val-estado"><option value="cumple">cumple</option><option value="regular">regular</option><option value="no_cumple">no_cumple</option></select></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-val">Guardar</button>
@@ -1455,6 +1563,8 @@ async function panelAdminValoraciones() {
      <div id="ranking"></div>`
   );
   $("#btn-nueva-val").onclick = () => $("#form-nueva-val").classList.toggle("oculta");
+  initCombo("val-est-txt", opEst, (o) => { $("#val-est").value = o.valor; }, "Buscar establecimiento...");
+  initCombo("val-act-txt", opActCat, (o) => { $("#val-act").value = o.extra.actividad; }, "Buscar actividad y categoria...");
   $("#btn-guardar-val").onclick = async () => {
     try {
       await API.asignarValoracion({
@@ -1560,14 +1670,18 @@ async function panelAdminAgenda() {
     filtrados.sort((a, b) => new Date(a.fecha) - new Date(b.fecha));
 
     const mostrando = buscar ? "Resultados de busqueda" : (seleccionDia ? `Torneos del ${seleccionDia}` : "Torneos de hoy");
+    const puedeEditar = API.usuario && API.usuario.rol === "admin";
 
     const lista = filtrados.length ? filtrados.map((ev) => `
       <div class="item-agenda">
-        <strong>${esc(ev.torneo)}</strong>
-        <span class="badge-rol">${esc(ev.division || ev.actividad)}</span>
-        <p class="muted"><span class="badge-rol">${esc(ev.fase || ev.grupo || "Fase de Grupos")}</span></p>
-        <p class="agenda-equipos"><strong>${esc(ev.equipos && ev.equipos[0] ? ev.equipos[0] : "Por definir")}</strong> vs <strong>${esc(ev.equipos && ev.equipos[1] ? ev.equipos[1] : "Por definir")}</strong></p>
-        <p class="muted">${esc(new Date(ev.fecha).toLocaleDateString("es-CL"))} - ${esc(ev.hora)}${ev.horaTermino ? ` a ${esc(ev.horaTermino)}` : ""} @ ${esc(ev.lugar)}</p>
+        <div class="item-agenda-cuerpo">
+          <strong>${esc(ev.torneo)}</strong>
+          <span class="badge-rol">${esc(ev.division || ev.actividad)}</span>
+          <p class="muted"><span class="badge-rol">${esc(ev.fase || ev.grupo || "Fase de Grupos")}</span></p>
+          <p class="agenda-equipos"><strong>${esc(ev.equipos && ev.equipos[0] ? ev.equipos[0] : "Por definir")}</strong> vs <strong>${esc(ev.equipos && ev.equipos[1] ? ev.equipos[1] : "Por definir")}</strong></p>
+          <p class="muted">${esc(new Date(ev.fecha).toLocaleDateString("es-CL"))} - ${esc(ev.hora)}${ev.horaTermino ? ` a ${esc(ev.horaTermino)}` : ""} @ ${esc(ev.lugar)}</p>
+        </div>
+        ${puedeEditar ? `<button class="btn btn-mini btn-primario2 item-agenda-editar" data-editar-partido="${ev.llaveId}" data-t-id="${ev.torneoId}" data-t-nombre="${esc(ev.torneo)}" data-t-formato="${esc(ev.formato || "amistoso")}">Editar</button>` : ""}
       </div>`).join("")
       : `<p class="muted">No hay torneos para esta fecha.</p>`;
 
@@ -1597,6 +1711,14 @@ async function panelAdminAgenda() {
   };
 
   $("#agenda-buscar").addEventListener("input", render);
+
+  // Boton "Editar" de cada partido: abre los partidos del torneo (Torneos y Sorteo)
+  // con el horario de ese partido listo para cambiar el dia y guardar.
+  $("#agenda-lista").addEventListener("click", (e) => {
+    const b = e.target.closest("[data-editar-partido]");
+    if (!b) return;
+    verPartidos(b.dataset.tId, b.dataset.tNombre || "Partidos", b.dataset.tFormato || "amistoso", b.dataset.editarPartido);
+  });
 
   document.querySelectorAll(".cal-celda").forEach((c) => {
     if (c.classList.contains("vacio")) return;
@@ -1649,32 +1771,113 @@ async function cargarCarteleraEn(sel) {
   const div = $(sel);
   if (div.innerHTML) { div.classList.toggle("oculta"); return; }
   const act = await API.actividades();
-  div.innerHTML = act.map((a) => {
+  div.innerHTML = `<div class="grid-2 cartelera-f">
+      <div class="campo"><label>Buscar actividad</label><input id="cart-buscar" placeholder="Por nombre o area..." autocomplete="off"></div>
+      <div class="campo"><label>Area</label><select id="cart-area"><option value="">Todas las areas</option><option value="Deportiva">Deportiva</option><option value="Artistico/Cultural">Artistico / Cultural</option></select></div>
+    </div><div id="cart-items">${act.map((a) => {
     const ahora = new Date();
     const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
     const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
     const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
     const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
     const puedeInscribir = abierta && dentroVentana;
-    return `<div class="tarjeta"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3>
+    return `<div class="tarjeta" data-busq="${esc((a.nombre + " " + a.area).toLowerCase())}" data-area="${esc(a.area)}"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3>
     <p class="muted">Categorias: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}${a.limiteInscritos ? ` | Cupos: ${a.limiteInscritos}` : ""}${a.edadMinima || a.edadMaxima ? ` | Edad: ${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios` : ""}</p>
     <p class="muted"><span class="estado ${puedeInscribir ? "est-activo" : "est-cancelado"}">${puedeInscribir ? "Inscripciones Abiertas" : "Cerrada"}</span>
     ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
-    ${puedeInscribir ? `<button class="btn btn-mini" data-ins-act="${a._id}">Inscribir</button>` : ""}
+    <div class="seccion">
+      ${puedeInscribir ? `<button class="btn btn-mini" data-ins-act="${a._id}">Inscribir</button>` : ""}
+      <button class="btn btn-mini" data-ver-part="${a._id}">Ver Participantes</button>
+    </div>
     <div id="form-act-${a._id}" class="oculta campo">
-      <label>Categoria</label><select id="div-${a._id}">${a.divisiones.map((d) => `<option>${esc(d)}</option>`).join("")}</select>
-      <button class="btn btn-ok btn-mini" data-guardar-ins="${a._id}">Enviar Inscripcion</button>
-    </div></div>`;
-  }).join("");
+      <label>Categoria</label>${comboHtml(`div-${a._id}-txt`, "Buscar categoria...")}<input type="hidden" id="div-${a._id}">
+      <div id="form-post-${a._id}" class="oculta">
+        <div class="grid-2">
+          <div class="campo"><label>RUT</label><input data-pp-rut="${a._id}" autocomplete="off"></div>
+          <div class="campo"><label>Nombres</label><input data-pp-nom="${a._id}" autocomplete="off"></div>
+          <div class="campo"><label>Apellidos</label><input data-pp-ape="${a._id}" autocomplete="off"></div>
+          <div class="campo"><label>Genero</label><select data-pp-gen="${a._id}"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
+          <div class="campo"><label>Fecha nacimiento</label><input type="date" data-pp-fec="${a._id}"></div>
+          <div class="campo"><label>Edad (automatica)</label><input data-pp-edad="${a._id}" readonly></div>
+        </div>
+        <button class="btn btn-ok btn-mini" data-aceptar-post="${a._id}">Aceptar</button>
+      </div>
+    </div>
+    <div id="part-${a._id}" class="oculta tarjeta-tor"></div></div>`;
+    }).join("")}</div>`;
+  const cartBuscar = $("#cart-buscar");
+  const cartArea = $("#cart-area");
+  const itemsCart = $("#cart-items");
+  const filtrarCart = () => {
+    const q = (cartBuscar.value || "").toLowerCase();
+    const ar = cartArea.value;
+    itemsCart.querySelectorAll(".tarjeta").forEach((t) => {
+      const okB = !q || (t.dataset.busq || "").includes(q);
+      const okA = !ar || (t.dataset && t.dataset.area) === ar;
+      t.classList.toggle("oculta", !(okB && okA));
+    });
+  };
+  if (cartBuscar) cartBuscar.oninput = filtrarCart;
+  if (cartArea) cartArea.onchange = filtrarCart;
   div.classList.remove("oculta");
+  let nomina = await API.nomina().catch(() => ({ alumnos: [] }));
+  const renderPart = (id) => {
+    const cont = $(`#part-${id}`);
+    if (!cont) return;
+    const lista = (nomina.alumnos || []).filter((x) => String(x.actividad && x.actividad._id) === String(id));
+    cont.innerHTML = lista.length
+      ? `<table><thead><tr><th>RUT</th><th>Nombre</th><th>Categoria</th></tr></thead>
+         <tbody>${lista.map((x) => `<tr><td>${esc(x.rut)}</td><td>${esc(x.nombre)}</td><td>${esc(x.division)}</td></tr>`).join("")}</tbody></table>`
+      : "<p class='muted'>Sin participantes registrados.</p>";
+    cont.classList.toggle("oculta");
+  };
   div.querySelectorAll("[data-ins-act]").forEach((b) => b.onclick = () => $(`#form-act-${b.dataset.insAct}`).classList.toggle("oculta"));
-  div.querySelectorAll("[data-guardar-ins]").forEach((b) => {
-    b.onclick = async () => {
-      try {
-        await API.crearInscripcion({ establecimiento: API.usuario.establecimiento._id, actividad: b.dataset.guardarIns, division: $(`#div-${b.dataset.guardarIns}`).value });
-        alert("Inscripcion enviada (en proceso)"); location.hash = "#coordSolicitudes";
-      } catch (err) { alert(err.message); }
-    };
+  div.querySelectorAll("[data-ver-part]").forEach((b) => b.onclick = () => renderPart(b.dataset.verPart));
+  act.forEach((a) => {
+    if (!a.divisiones || !a.divisiones.length) return;
+    initCombo(`div-${a._id}-txt`, a.divisiones.map((d) => ({ valor: d, texto: d })), (o) => {
+      $(`#div-${a._id}`).value = o.valor;
+      const fp = $(`#form-post-${a._id}`);
+      if (fp) fp.classList.remove("oculta");
+    }, "Buscar categoria...");
+  });
+  div.querySelectorAll("[data-pp-fec]").forEach((f) => f.addEventListener("input", () => {
+    const id = f.dataset.ppFec;
+    const nac = new Date(f.value);
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+    const campo = document.querySelector(`[data-pp-edad="${id}"]`);
+    if (campo) campo.value = f.value && Number.isFinite(edad) ? `${edad} anio(s)` : "";
+  }));
+  div.querySelectorAll("[data-aceptar-post]").forEach((b) => b.onclick = async () => {
+    const id = b.dataset.aceptarPost;
+    const divTxt = document.querySelector(`#div-${id}-txt`).value.trim();
+    const division = $(`#div-${id}`).value || divTxt;
+    const rut = document.querySelector(`[data-pp-rut="${id}"]`).value.trim();
+    const nom = document.querySelector(`[data-pp-nom="${id}"]`).value.trim();
+    const ape = document.querySelector(`[data-pp-ape="${id}"]`).value.trim();
+    const gen = document.querySelector(`[data-pp-gen="${id}"]`).value;
+    const fec = document.querySelector(`[data-pp-fec="${id}"]`).value;
+    if (!division) { alert("Seleccione la categoria primero"); return; }
+    if (!rut || !nom || !fec) { alert("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
+    try {
+      await API.peticion("POST", "/api/inscripciones/postular", {
+        actividad: id,
+        division,
+        alumno: { rut, nombre: `${nom} ${ape}`.trim(), genero: gen, fechaNacimiento: fec },
+      });
+      alert("Postulante agregado a la nomina");
+      nomina = await API.nomina().catch(() => nomina);
+      document.querySelector(`[data-pp-rut="${id}"]`).value = "";
+      document.querySelector(`[data-pp-nom="${id}"]`).value = "";
+      document.querySelector(`[data-pp-ape="${id}"]`).value = "";
+      document.querySelector(`[data-pp-fec="${id}"]`).value = "";
+      document.querySelector(`[data-pp-edad="${id}"]`).value = "";
+      const contPart = $(`#part-${id}`);
+      if (contPart && !contPart.classList.contains("oculta")) renderPart(id);
+    } catch (err) { alert(err.message); }
   });
 
   // Torneos programados (admin definio fechas/requisitos) visibles para inscribirse.
@@ -1706,32 +1909,29 @@ async function cargarCarteleraEn(sel) {
   }
 }
 
-async function panelCoordEncargados() {
+async function panelCoordLectores() {
   const usuarios = await API.usuarios();
-  const act = await API.actividades();
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Encargados del Establecimiento</h2><button class="btn btn-primario2" id="btn-nuevo-enc">+ Nuevo Encargado</button></div>
+    `<div class="encabezado"><h2 class="pagina">Lectores del Establecimiento</h2><button class="btn btn-primario2" id="btn-nuevo-enc">+ Nuevo Lector</button></div>
      <div id="form-nuevo-enc" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>RUT</label><input id="enc-rut"></div>
          <div class="campo"><label>Nombre</label><input id="enc-nombre"></div>
          <div class="campo"><label>Clave</label><input id="enc-clave"></div>
-         <div class="campo"><label>Actividad</label><select id="enc-act">${act.map((a) => `<option value="${a._id}">${esc(a.nombre)}</option>`).join("")}</select></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-enc">Guardar</button>
      </div>
-     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Actividades</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc((u.actividades || []).map((a) => a.nombre || a).join(", "))}</td></tr>`).join("")}</tbody></table></div>`
+     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Establecimiento</th></tr></thead>
+     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td></tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nuevo-enc").onclick = () => $("#form-nuevo-enc").classList.toggle("oculta");
   $("#btn-guardar-enc").onclick = async () => {
     try {
       await API.crearUsuario({
-        rut: $("#enc-rut").value, nombre: $("#enc-nombre").value, rol: "encargado",
+        rut: $("#enc-rut").value, nombre: $("#enc-nombre").value, rol: "lector",
         clave: $("#enc-clave").value, establecimiento: API.usuario.establecimiento._id,
-        actividades: [$("#enc-act").value],
       });
-      panelCoordEncargados();
+      panelCoordLectores();
     } catch (err) { alert(err.message); }
   };
 }
@@ -1746,26 +1946,32 @@ async function panelCoordInscribir() {
     return (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
   });
   const opcionesTorneo = torAbiertos.map((t) => `<option value="${t._id}">${esc(t.nombre)}</option>`).join("");
+  const opAsocTor = torAbiertos.map((t) => ({ valor: String(t._id), texto: t.nombre }));
   contenido(
-    `<h2 class="pagina">Inscripciones y Cartelera</h2>
-     <div class="seccion"><button class="btn btn-primario2" id="btn-cartelera">Ver Cartelera de Actividades</button></div>
-     <div id="cartelera-c" class="oculta"></div>
-     <div class="tarjeta"><h3>Mis Inscripciones</h3>
-      <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
-      <tbody>${ins.map((i) => `<tr>
-        <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
-        <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
-        <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
-      </tr>`).join("")}</tbody></table>${opcionesTorneo ? `<div class="campo" style="margin-top:12px"><label>Asociar al Torneo (requisitos validados)</label>
-      <div class="seccion"><select id="asoc-ins"></select><select id="asoc-tor">${opcionesTorneo}</select>
-      <button class="btn btn-ok btn-mini" id="btn-asoc-tor">Asociar</button></div></div>` : ""}
-      <h3>Inscribir Estudiantes</h3><div id="alumnos-forms"></div>
+    `<h2 class="pagina">Postulaciones</h2>
+     <div class="postula-fila">
+       <div class="postula-cartelera">
+         <h3>Cartelera de Actividades</h3>
+         <div id="cartelera-c"></div>
+       </div>
+       <div class="postula-ins tarjeta">
+         <h3>Mis Inscripciones</h3>
+         <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
+         <tbody>${ins.map((i) => `<tr>
+           <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
+           <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
+           <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
+         </tr>`).join("")}</tbody></table>${opcionesTorneo ? `<div class="campo" style="margin-top:12px"><label>Asociar al Torneo (requisitos validados)</label>
+         <div class="seccion"><select id="asoc-ins"></select>${comboHtml("asoc-tor-txt", "Buscar torneo...")}<input type="hidden" id="asoc-tor">
+         <button class="btn btn-ok btn-mini" id="btn-asoc-tor">Asociar</button></div></div>` : ""}
+       </div>
      </div>`
   );
-  $("#btn-cartelera").onclick = () => cargarCarteleraEn("#cartelera-c");
+  cargarCarteleraEn("#cartelera-c");
   document.querySelectorAll("[data-retract]").forEach((b) => {
     b.onclick = async () => { try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); panelCoordInscribir(); } catch (err) { alert(err.message); } };
   });
+  initCombo("asoc-tor-txt", opAsocTor, (o) => { $("#asoc-tor").value = o.valor; }, "Buscar torneo...");
   const selAsocIns = $("#asoc-ins");
   if (selAsocIns) {
     const aceptadas = ins.filter((i) => i.estado === "aceptada");
@@ -1783,19 +1989,141 @@ async function panelCoordInscribir() {
 { /* notas de soporte para agregar alumnos dentro del panel coordinador */ }
 function panelCoordSolicitudes() { return panelCoordSolicitudesImpl(); }
 
+// Modulo del coordinador: postular estudiantes a los torneos programados por
+// el Admin DAEM. Se puede postular desde la nomina de la actividad/categoria
+// del torneo o registrando un estudiante nuevo (queda en la nomina y se
+// inscribe al torneo).
+async function panelCoordTorneos() {
+  const [torneos, nomina] = await Promise.all([
+    API.torneosPostulables().catch(() => []),
+    API.nomina().catch(() => ({ alumnos: [] })),
+  ]);
+  const alumnos = nomina.alumnos || [];
+
+  const tarjetaTorneo = (t) => {
+    const actId = t.actividad ? String(t.actividad._id || t.actividad) : "";
+    const actNombre = t.actividad ? t.actividad.nombre : "Sin actividad";
+    const division = t.division || "";
+
+    const yaPostulados = alumnos.filter((a) =>
+      (a.torneos || []).some((x) => String(x._id || x) === String(t._id))
+    );
+    const candidatos = alumnos.filter((a) => {
+      if (a.actividad && String(a.actividad._id || a.actividad) !== actId) return false;
+      if (a.division !== division) return false;
+      return !(a.torneos || []).some((x) => String(x._id || x) === String(t._id));
+    });
+
+    const opciones = candidatos.length
+      ? candidatos.map((a) => `<option value="${a._id}">${esc(a.rut)} - ${esc(a.nombre)} (${esc(a.division)})</option>`).join("")
+      : `<option value="">Sin estudiantes disponibles en esta categoria</option>`;
+
+    const aYTxt = [
+      t.fechaAperturaInscripcion ? `Apertura: ${new Date(t.fechaAperturaInscripcion).toLocaleDateString("es-CL")}` : "",
+      t.fechaCierreInscripcion ? `Cierre: ${new Date(t.fechaCierreInscripcion).toLocaleDateString("es-CL")}` : "",
+    ].filter(Boolean).join(" | ");
+
+    return `<div class="tarjeta">
+      <h3>${esc(t.nombre)} <span class="badge-rol">${esc(division)}</span> <span class="badge-rol">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span></h3>
+      <p class="muted">Actividad: ${esc(actNombre)} | ${esc(aYTxt)} | Postulados de mi establecimiento: ${t.postulados ?? yaPostulados.length}</p>
+      <div class="grid-2">
+        <div class="campo">
+          <label>Postular desde la nomina (${esc(actNombre)} - ${esc(division)})</label>
+          <select data-tor-nom="${t._id}">${opciones}</select>
+          <button class="btn btn-ok btn-mini" data-post-nom="${t._id}">Postular seleccionado</button>
+        </div>
+        <div class="campo">
+          <label>O registrar un estudiante nuevo</label>
+          <div class="grid-2">
+            <div class="campo"><input data-n-rut="${t._id}" placeholder="RUT"></div>
+            <div class="campo"><input data-n-nom="${t._id}" placeholder="Nombres"></div>
+            <div class="campo"><input data-n-ape="${t._id}" placeholder="Apellidos"></div>
+            <div class="campo"><select data-n-gen="${t._id}"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
+            <div class="campo"><input type="date" data-n-fec="${t._id}"></div>
+            <div class="campo"><input data-n-edad="${t._id}" placeholder="Edad (auto)" readonly></div>
+          </div>
+          <button class="btn btn-ok btn-mini" data-post-nuevo="${t._id}">Agregar y postular</button>
+        </div>
+      </div>
+      <p class="muted" style="margin-top:8px">Postulados:</p>
+      ${yaPostulados.length
+        ? `<table class="tabla-desglose"><thead><tr><th>RUT</th><th>Nombre</th><th>Categoria</th></tr></thead>
+           <tbody>${yaPostulados.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>`
+        : `<p class="muted">Aun no hay postulados de su establecimiento.</p>`}
+    </div>`;
+  };
+
+  contenido(
+    `<h2 class="pagina">Postular a Torneos</h2>
+     <p class="muted">Torneos programados por el Admin DAEM. Postule estudiantes de la nomina de la actividad correspondiente o registre uno nuevo (se agrega a la nomina y se inscribe al torneo).</p>
+     ${torneos.length ? torneos.map(tarjetaTorneo).join("") : `<div class="tarjeta"><p class="muted">No hay torneos en periodo de inscripciones.</p></div>`}`
+  );
+
+  // Edad automatica al elegir la fecha de nacimiento del estudiante nuevo.
+  const calcEdad = (fec) => {
+    if (!fec) return "";
+    const nac = new Date(fec);
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+    return Number.isFinite(edad) ? `${edad} anio(s)` : "";
+  };
+  document.querySelectorAll("[data-n-fec]").forEach((f) => {
+    f.addEventListener("input", () => {
+      const campo = document.querySelector(`[data-n-edad="${f.dataset.nFec}"]`);
+      if (campo) campo.value = calcEdad(f.value);
+    });
+  });
+
+  const obtenerNuevo = (id) => ({
+    rut: document.querySelector(`[data-n-rut="${id}"]`)?.value.trim() || "",
+    nombre: document.querySelector(`[data-n-nom="${id}"]`)?.value.trim() || "",
+    apellidos: document.querySelector(`[data-n-ape="${id}"]`)?.value.trim() || "",
+    genero: document.querySelector(`[data-n-gen="${id}"]`)?.value || "M",
+    fechaNacimiento: document.querySelector(`[data-n-fec="${id}"]`)?.value || "",
+  });
+
+  const refrescar = () => panelCoordTorneos();
+
+  document.querySelectorAll("[data-post-nom]").forEach((b) => {
+    b.onclick = async () => {
+      const id = b.dataset.postNom;
+      const sel = document.querySelector(`[data-tor-nom="${id}"]`);
+      const alumnoId = sel && sel.value;
+      if (!alumnoId) { alert("Seleccione un estudiante de la nomina"); return; }
+      try {
+        const r = await API.postularTorneo(id, { alumnoId });
+        alert(r.mensaje); refrescar();
+      } catch (err) { alert(err.message); }
+    };
+  });
+
+  document.querySelectorAll("[data-post-nuevo]").forEach((b) => {
+    b.onclick = async () => {
+      const id = b.dataset.postNuevo;
+      const n = obtenerNuevo(id);
+      if (!n.rut || !n.nombre || !n.fechaNacimiento) { alert("Complete RUT, Nombres y Fecha de nacimiento"); return; }
+      try {
+        const r = await API.postularTorneo(id, { alumno: { rut: n.rut, nombre: `${n.nombre} ${n.apellidos}`.trim(), genero: n.genero, fechaNacimiento: n.fechaNacimiento } });
+        alert(r.mensaje); refrescar();
+      } catch (err) { alert(err.message); }
+    };
+  });
+}
+
 async function panelCoordSolicitudesImpl() {
   const solicitudes = await API.solicitudes();
   const encAlumnos = await API.inscripciones();
+  const opAlIns = encAlumnos.filter((i) => i.estado === "aceptada")
+    .sort((a, b) => (a.actividad?.nombre || "").localeCompare(b.actividad?.nombre || "") || (a.division || "").localeCompare(b.division || ""))
+    .map((i) => ({ valor: String(i._id), texto: `${i.actividad ? i.actividad.nombre : ""} - ${i.division}` }));
   contenido(
     `<h2 class="pagina">Solicitudes y Estado</h2>
-     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">Agregar Estudiante a Inscripcion</button>
-     <button class="btn btn-primario2" id="btn-ver-alumnos">Ver Alumnos</button></div>
+     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">Agregar Estudiante a Inscripcion</button></div>
      <div id="agregar-alumno-box" class="oculta tarjeta">
        <div class="grid-2">
-         <div class="campo"><label>Inscripcion (aceptada)</label><select id="al-ins">${(function () {
-           const aceptadas = encAlumnos.filter((i) => i.estado === "aceptada").sort((a, b) => (a.actividad?.nombre || "").localeCompare(b.actividad?.nombre || "") || (a.division || "").localeCompare(b.division || ""));
-           return aceptadas.length ? aceptadas.map((i) => `<option value="${i._id}">${esc(i.actividad ? i.actividad.nombre : "")} - ${esc(i.division)}</option>`).join("") : `<option value="">Sin inscripciones aceptadas</option>`;
-         })()}</select></div>
+         <div class="campo"><label>Inscripcion (aceptada)</label>${comboHtml("al-ins-txt", "Buscar inscripcion...")}<input type="hidden" id="al-ins"></div>
          <div class="campo"><label>RUT alumno</label><input id="al-rut"></div>
          <div class="campo"><label>Nombre</label><input id="al-nombre"></div>
          <div class="campo"><label>Genero</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
@@ -1803,14 +2131,13 @@ async function panelCoordSolicitudesImpl() {
        </div>
        <button class="btn btn-ok" id="btn-guardar-al">Agregar</button>
      </div>
-     <div id="alumnos-lista" class="oculta"></div>
      <div class="tarjeta"><h3>Estado de Solicitudes</h3>
        <table><thead><tr><th>Tipo</th><th>Detalle</th><th>Estado</th></tr></thead>
        <tbody>${solicitudes.map((s) => `<tr><td>${esc(s.tipo)}</td><td>${esc(s.detalle)}</td><td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td></tr>`).join("")}</tbody></table>
      </div>`
   );
-  $("#btn-ver-alumnos").onclick = () => cargarAlumnos("#alumnos-lista");
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
+  initCombo("al-ins-txt", opAlIns, (o) => { $("#al-ins").value = o.valor; }, "Buscar inscripcion...");
   $("#btn-guardar-al").onclick = async () => {
     try {
       await API.agregarAlumno($("#al-ins").value, {
@@ -1821,82 +2148,86 @@ async function panelCoordSolicitudesImpl() {
   };
 }
 
-async function cargarAlumnos(sel) {
-  const div = $(sel);
-  if (div.innerHTML) { div.classList.toggle("oculta"); return; }
-  const nomina = await API.nomina();
-  div.innerHTML = `<div class="tarjeta"><h3>Nomina de Estudiantes</h3>
-    <table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Division</th></tr></thead>
-    <tbody>${nomina.alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>
+// Tabla de la nomina (reutilizada por el listado siempre visible del panel).
+function tablaAlumnosNomina(alumnos) {
+  return `<div class="tarjeta"><h3>Nomina de Estudiantes <span class="muted">(${alumnos.length})</span></h3>
+    <table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Categoria</th></tr></thead>
+    <tbody>${alumnos.length
+      ? alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")
+      : '<tr><td colspan="5" class="muted">Sin estudiantes para los filtros seleccionados.</td></tr>'}</tbody></table>
   </div>`;
-  div.classList.remove("oculta");
 }
 
 async function panelCoordNomina() {
   const nomina = await API.nomina();
+  const alumnos = nomina.alumnos || [];
+  // Actividades y categorias presentes en la nomina del propio establecimiento.
+  const actividades = [...new Set(alumnos.map((a) => a.actividad && a.actividad.nombre).filter(Boolean))].sort();
+  const categorias = [...new Set(alumnos.map((a) => a.division).filter(Boolean))].sort();
+  const subcategorias = ["Damas", "Varones"].map((s) => ({ valor: s, texto: s }));
+
   contenido(
-    `<h2 class="pagina">Nomina Interna de Estudiantes</h2>
+    `<div class="encabezado"><h2 class="pagina">Nomina Interna de Estudiantes</h2>
+       <button class="btn btn-primario2" id="btn-filtrar">Filtrar</button></div>
      <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Total</div></div>
-     <div class="tarjeta"><h3>Por Actividad</h3>
-       <table><thead><tr><th>Actividad</th><th>Cantidad</th></tr></thead>
-       <tbody>${nomina.porActividad.map((p) => `<tr><td>${esc(p.actividad)}</td><td>${p.cantidad}</td></tr>`).join("")}</tbody></table>
-     </div>`
-  );
-}
-
-// ============================================================
-// PANELES ENCARGADO
-// ============================================================
-async function panelEncAgenda() {
-  const ag = await API.agenda();
-  contenido(
-    `<h2 class="pagina">Mi Agenda de Encuentros</h2>
-     <div class="tarjeta">${ag.mios.length ?
-       ag.mios.map((m) => `<div class="campo">${esc(new Date(m.encuentro.fecha).toLocaleDateString())} - ${esc(m.encuentro.hora)} @ ${esc(m.encuentro.lugar)} (${esc(m.actividad ? m.actividad.nombre : "-")})</div>`).join("")
-       : "<p class='muted'>No hay encuentros asignados.</p>"}
-     </div>` 
-  );
-}
-
-async function panelEncAlumnos() {
-  const alumnos = await API.misAlumnos();
-  contenido(
-    `<h2 class="pagina">Gestion de Alumnos / Asistencia</h2>
-     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Division</th></tr></thead>
-     <tbody>${alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>
-     <p class="muted">La asistencia se registra via endpoint /api/alumnos/:id/asistencia/:encuentroId</p></div>`
-  );
-}
-
-async function panelEncSolicitudes() {
-  const solicitudes = await API.solicitudes();
-  contenido(
-    `<h2 class="pagina">Solicitudes Internas</h2>
-     <div class="seccion"><button class="btn btn-primario2" id="btn-nueva-sol">+ Nueva Solicitud</button></div>
-     <div id="form-nueva-sol" class="oculta tarjeta">
-       <div class="grid-2">
-         <div class="campo"><label>Tipo</label><select id="sol-tipo"><option value="recursos">recursos</option><option value="participacion">participacion</option><option value="otro">otro</option></select></div>
-         <div class="campo"><label>Detalle</label><input id="sol-detalle"></div>
+     <div class="nomina-fila">
+       <div class="nomina-lista" id="alumnos-lista"></div>
+       <div class="tarjeta oculta nomina-filtros" id="nomina-filtros">
+         <h3>Filtrar</h3>
+         <div class="campo"><label>Nombre</label><input id="flt-nombre" autocomplete="off"></div>
+         <div class="campo"><label>Actividad</label>${comboHtml("flt-act-txt", "Buscar actividad...")}</div>
+         <div class="campo"><label>Categoria</label>${comboHtml("flt-cat-txt", "Buscar categoria...")}</div>
+         <div class="campo"><label>Subcategoria</label>${comboHtml("flt-sub-txt", "Damas / Varones...")}</div>
+         <button class="btn btn-mini" id="btn-limpiar-filtros">Limpiar filtros</button>
        </div>
-       <button class="btn btn-ok" id="btn-guardar-sol">Enviar al Coordinador</button>
-     </div>
-     <div class="tarjeta"><table><thead><tr><th>Tipo</th><th>Detalle</th><th>Estado</th></tr></thead>
-     <tbody>${solicitudes.map((s) => `<tr><td>${esc(s.tipo)}</td><td>${esc(s.detalle)}</td><td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td></tr>`).join("")}</tbody></table>
      </div>`
   );
-  $("#btn-nueva-sol").onclick = () => $("#form-nueva-sol").classList.toggle("oculta");
-  $("#btn-guardar-sol").onclick = async () => {
-    try {
-      await API.crearSolicitud({ tipo: $("#sol-tipo").value, detalle: $("#sol-detalle").value });
-      panelEncSolicitudes();
-    } catch (err) { alert(err.message); }
+
+  const filtro = { nombre: "", actividad: "", categoria: "", subcategoria: "" };
+  const norm = (v) => String(v || "").toLowerCase().trim();
+
+  const render = () => {
+    const fNombre = norm(filtro.nombre);
+    const fAct = norm(filtro.actividad);
+    const fCat = norm(filtro.categoria);
+    const fSub = norm(filtro.subcategoria);
+    const lista = alumnos.filter((a) => {
+      if (fNombre && !norm(a.nombre).includes(fNombre)) return false;
+      if (fAct && !norm(a.actividad && a.actividad.nombre).includes(fAct)) return false;
+      if (fCat && !norm(a.division).includes(fCat)) return false;
+      if (fSub) {
+        const genero = fSub.includes("dam") || fSub.includes("fem") ? "F"
+          : (fSub.includes("var") || fSub.includes("masc")) ? "M" : "";
+        if (genero && String(a.genero) !== genero) return false;
+      }
+      return true;
+    });
+    $("#alumnos-lista").innerHTML = tablaAlumnosNomina(lista);
   };
+
+  $("#btn-filtrar").onclick = () => $("#nomina-filtros").classList.toggle("oculta");
+  $("#flt-nombre").addEventListener("input", (e) => { filtro.nombre = e.target.value; render(); });
+  initCombo("flt-act-txt", actividades.map((n) => ({ valor: n, texto: n })), (o) => { filtro.actividad = o.texto; render(); }, "Buscar actividad...");
+  initCombo("flt-cat-txt", categorias.map((d) => ({ valor: d, texto: d })), (o) => { filtro.categoria = o.texto; render(); }, "Buscar categoria...");
+  initCombo("flt-sub-txt", subcategorias, (o) => { filtro.subcategoria = o.texto; render(); }, "Damas / Varones...");
+  $("#flt-act-txt").addEventListener("input", (e) => { filtro.actividad = e.target.value; render(); });
+  $("#flt-cat-txt").addEventListener("input", (e) => { filtro.categoria = e.target.value; render(); });
+  $("#flt-sub-txt").addEventListener("input", (e) => { filtro.subcategoria = e.target.value; render(); });
+  $("#btn-limpiar-filtros").onclick = () => {
+    filtro.nombre = filtro.actividad = filtro.categoria = filtro.subcategoria = "";
+    $("#flt-nombre").value = "";
+    $("#flt-act-txt").value = $("#flt-cat-txt").value = $("#flt-sub-txt").value = "";
+    render();
+  };
+  render();
 }
 
 // ============================================================
-// PANELES DIRECTOR (SOLO LECTURA)
+// PANELES LECTOR (SOLO LECTURA)
 // ============================================================
-async function panelDirectorResumen() {
+async function panelLectorResumen() {
+  const u = API.usuario || {};
+  const establecimiento = u.establecimiento && u.establecimiento.nombre ? u.establecimiento.nombre : null;
   const [act, tor] = await Promise.all([
     API.actividades().catch(() => []),
     API.torneos().catch(() => []),
@@ -1919,7 +2250,7 @@ async function panelDirectorResumen() {
   const torneosVigentes = tor.filter((t) => ["activo", "en_curso", "inscripciones"].includes(t.estado));
 
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Vista de Solo Lectura</h2><p class="muted">Perfil Director - no puede modificar datos.</p></div>
+    `<div class="encabezado"><h2 class="pagina">Vista de Solo Lectura</h2><p class="muted">Perfil Lector - no puede modificar datos.${establecimiento ? ` | Establecimiento: ${esc(establecimiento)}` : ""}</p></div>
      <div class="tarjeta"><h3>Torneos Vigentes</h3>
        ${torneosVigentes.length
          ? torneosVigentes.map((t) => `<div class="cambio-torneo">${formatearEstado(t.estado)} <strong>${esc(t.nombre)}</strong> <span class="muted">${esc(t.actividad ? t.actividad.nombre : "")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</span></div>`).join("")
@@ -1938,25 +2269,27 @@ async function panelDirectorResumen() {
   );
 }
 
-async function panelDirectorEstablecimientos() {
-  const est = await API.establecimientos();
+// Nomina del propio establecimiento: estudiantes con la actividad en que participan.
+async function panelLectorEstudiantes() {
+  const u = API.usuario || {};
+  const establecimiento = u.establecimiento && u.establecimiento.nombre ? u.establecimiento.nombre : "";
+  const nomina = await API.nomina();
   contenido(
-    `<h2 class="pagina">Establecimientos</h2>
-     <div class="tarjeta"><table><thead><tr><th>Codigo</th><th>Nombre</th><th>Dependencia</th><th>Direccion</th></tr></thead>
-     <tbody>${est.map((e) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.nombre)}</td><td>${esc(e.dependencia)}</td><td>${esc(e.direccion || "-")}</td></tr>`).join("")}</tbody></table></div>`
-  );
-}
-
-async function panelDirectorRanking() {
-  const ranking = await API.ranking();
-  contenido(
-    `<h2 class="pagina">Ranking de Cumplimiento</h2>
-     ${Object.keys(ranking).length
-       ? Object.entries(ranking).map(([nombre, filas]) =>
-           `<div class="tarjeta"><h3>${esc(nombre)}</h3>` +
-           filas.map((f) => `<span class="stat"><strong>${esc(f.establecimiento)}</strong><br><span class="badge-rol">${esc(f.estado)} (${f.valor})</span></span>`).join("") +
-           `</div>`).join("")
-       : "<div class='tarjeta'><p class='muted'>Sin valoraciones registradas.</p></div>"}`
+    `<div class="encabezado"><h2 class="pagina">Estudiantes del Establecimiento</h2>
+       <p class="muted">${establecimiento ? esc(establecimiento) : "Sin establecimiento asignado"} - solo lectura</p></div>
+     <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Estudiantes inscritos</div></div>
+     <div class="tarjeta"><h3>Por Actividad</h3>
+       ${nomina.porActividad.length
+         ? `<table><thead><tr><th>Actividad</th><th>Cantidad</th></tr></thead>
+            <tbody>${nomina.porActividad.map((p) => `<tr><td>${esc(p.actividad)}</td><td>${p.cantidad}</td></tr>`).join("")}</tbody></table>`
+         : "<p class='muted'>Sin estudiantes registrados.</p>"}
+     </div>
+     <div class="tarjeta"><h3>Listado de Estudiantes</h3>
+       ${nomina.alumnos.length
+         ? `<table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Division</th></tr></thead>
+            <tbody>${nomina.alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>`
+         : "<p class='muted'>Sin estudiantes registrados.</p>"}
+     </div>`
   );
 }
 
