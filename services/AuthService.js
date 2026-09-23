@@ -22,7 +22,7 @@ class AuthService {
     if (!usuario.activo) throw new Error("El usuario esta desactivado");
 
     const token = jwt.sign(
-      { sub: usuario._id, rut: usuario.rut, rol: usuario.rol },
+      { sub: usuario.id, rut: usuario.rut, rol: usuario.rol },
       process.env.JWT_SECRET || "daem_clave_super_secreta",
       { expiresIn: "12h" }
     );
@@ -30,20 +30,11 @@ class AuthService {
     return { token, usuario: this.#limpiarUsuario(usuario) };
   }
 
+  // El repositorio ya devuelve objetos planos (id numerico): solo elimina el
+  // hash y asegura `_id` para la respuesta de login del front.
   #limpiarUsuario(usuario) {
     if (!usuario) return usuario;
-    const copia = { ...usuario };
-    delete copia.claveHash;
-    if (copia._doc) {
-      const limpio = copia._doc.toObject ? copia._doc.toObject() : { ...copia._doc };
-      delete limpio.claveHash;
-      // Asegura que los campos de nivel superior queden limpios.
-      const result = { ...copia, ...limpio };
-      delete result._doc;
-      delete result.claveHash;
-      return result;
-    }
-    // Respuestas .lean() de Mongoose: elimina el hash a nivel raiz.
+    const copia = { ...usuario, _id: usuario.id };
     delete copia.claveHash;
     return copia;
   }
@@ -61,8 +52,11 @@ class AuthService {
       clave || "admin123"
     );
 
-    const doc = await this.#usuarios.crear(admin);
-    const poblado = await this.#usuarios.obtenerPorId(doc._id);
+    const doc = await this.#usuarios.crear({
+      ...admin.obtenerResumen(),
+      claveHash: bcrypt.hashSync(admin.clave, 10),
+    });
+    const poblado = await this.#usuarios.obtenerPorId(doc.id);
     return poblado;
   }
 }

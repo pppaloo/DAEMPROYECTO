@@ -1,27 +1,38 @@
 const Usuario = require("../domain/Usuario");
+const bcrypt = require("bcryptjs");
 const UsuarioRepository = require("../repositories/UsuarioRepository");
+const EstablecimientoRepository = require("../repositories/EstablecimientoRepository");
+
+// Extrae el id numerico de un establecimiento (objeto poblado o id plano).
+function idDeEstablecimiento(valor) {
+  if (valor === null || valor === undefined) return valor;
+  if (typeof valor === "object") return valor.id ?? valor._id ?? null;
+  return valor;
+}
 
 class UsuarioService {
   #usuarios;
+  #establecimientos;
 
   constructor() {
     this.#usuarios = new UsuarioRepository();
+    this.#establecimientos = new EstablecimientoRepository();
   }
 
   async crearUsuario(datos, usuarioLogueado) {
-    // Admin: puede crear coordinadores/encargados.
-    // Coordinador: crea encargados de SU establecimiento.
+    // Admin: puede crear coordinadores y lectores.
+    // Coordinador: crea lectores de SU establecimiento.
     if (usuarioLogueado.rol === "admin") {
-      if (datos.rol === "encargado" && !datos.establecimiento) {
-        throw new Error("Un encargado debe tener un establecimiento asignado");
+      if (datos.rol === "lector" && !datos.establecimiento) {
+        throw new Error("Un lector debe tener un establecimiento asignado");
       }
     } else if (usuarioLogueado.rol === "coordinador") {
-      if (datos.rol !== "encargado") {
-        throw new Error("El coordinador solo puede crear perfiles de Encargado");
+      if (datos.rol !== "lector") {
+        throw new Error("El coordinador solo puede crear perfiles de Lector");
       }
-      const propio = usuarioLogueado.establecimiento?._id;
+      const propio = idDeEstablecimiento(usuarioLogueado.establecimiento);
       if (!datos.establecimiento || String(datos.establecimiento) !== String(propio)) {
-        throw new Error("El encargado debe asignarse al establecimiento del coordinador");
+        throw new Error("El lector debe asignarse al establecimiento del coordinador");
       }
     } else {
       throw new Error("No tiene permisos para crear usuarios");
@@ -40,25 +51,35 @@ class UsuarioService {
       throw new Error("Un coordinador debe tener un establecimiento asignado");
     }
 
-    const doc = await this.#usuarios.crear(usuario);
-    if (datos.actividades) {
-      const lista = Array.isArray(datos.actividades) ? datos.actividades : [datos.actividades];
-      await this.#usuarios.actualizar(doc._id, { actividades: lista });
-    }
-    return this.#usuarios.obtenerPorId(doc._id);
+    const doc = await this.#usuarios.crear({
+      ...usuario.obtenerResumen(),
+      claveHash: bcrypt.hashSync(datos.clave, 10),
+    });
+    return this.#aPublico(this.#usuarios.obtenerPorId(doc.id));
   }
 
   async obtenerTodos(usuarioLogueado) {
+    const todos = this.#usuarios.obtenerTodos();
     const filtro = {};
     if (usuarioLogueado.rol === "coordinador") {
-      filtro.rol = "encargado";
-      filtro.establecimiento = usuarioLogueado.establecimiento?._id;
+      filtro.rol = "lector";
+      filtro.establecimiento = idDeEstablecimiento(usuarioLogueado.establecimiento);
     }
-    return this.#usuarios.obtenerTodos(filtro);
+    // El repo no aplica filtros: se filtra aqui para mantener el alcance del
+    // coordinador (solo lectores de SU establecimiento).
+    const visibles = todos.filter((u) => {
+      if (filtro.rol && u.rol !== filtro.rol) return false;
+      if (filtro.establecimiento !== undefined && filtro.establecimiento !== null) {
+        const fk = typeof u.establecimiento === "object" ? (u.establecimiento.id ?? u.establecimiento._id) : u.establecimiento;
+        if (String(fk) !== String(filtro.establecimiento)) return false;
+      }
+      return true;
+    });
+    return visibles.map((u) => this.#aPublico(u));
   }
 
   async obtenerPorId(id) {
-    return this.#usuarios.obtenerPorId(id);
+    return this.#aPublico(this.#usuarios.obtenerPorId(id));
   }
 
   async actualizar(id, datos, usuarioLogueado) {
@@ -66,11 +87,12 @@ class UsuarioService {
     if (!existente) throw new Error("Usuario no encontrado");
 
     if (usuarioLogueado.rol === "coordinador") {
-      if (existente.rol !== "encargado") {
-        throw new Error("El coordinador solo administra a sus Encargados");
+      if (existente.rol !== "lector") {
+        throw new Error("El coordinador solo administra a sus Lectores");
       }
-      if (String(existente.establecimiento?._id) !== String(usuarioLogueado.establecimiento?._id)) {
-        throw new Error("El Encargado no pertenece a su establecimiento");
+      if (String(idDeEstablecimiento(existente.establecimiento)) !==
+          String(idDeEstablecimiento(usuarioLogueado.establecimiento))) {
+        throw new Error("El Lector no pertenece a su establecimiento");
       }
     }
 
@@ -92,41 +114,51 @@ class UsuarioService {
     if (datos.telefono !== undefined) actualizar.telefono = datos.telefono;
     if (datos.rol) actualizar.rol = datos.rol;
     if (datos.establecimiento !== undefined) actualizar.establecimiento = datos.establecimiento;
-    if (datos.actividades !== undefined) actualizar.actividades = datos.actividades;
     if (datos.activo !== undefined) actualizar.activo = datos.activo;
 
     await this.#usuarios.actualizar(id, actualizar);
-    return this.#usuarios.obtenerPorId(id);
-  }
-
-  async asignarActividades(id, actividades, usuarioLogueado) {
-    const existente = await this.#usuarios.obtenerPorId(id);
-    if (!existente) throw new Error("Usuario no encontrado");
-    if (existente.rol !== "encargado") {
-      throw new Error("Solo se pueden asignar actividades a un encargado");
-    }
-    if (usuarioLogueado.rol === "coordinador") {
-      if (String(existente.establecimiento?._id) !== String(usuarioLogueado.establecimiento?._id)) {
-        throw new Error("El Encargado no pertenece a su establecimiento");
-      }
-    }
-    const lista = Array.isArray(actividades) ? actividades : [actividades];
-    await this.#usuarios.actualizar(id, { actividades: lista });
-    return this.#usuarios.obtenerPorId(id);
+    return this.#aPublico(this.#usuarios.obtenerPorId(id));
   }
 
   async eliminar(id, usuarioLogueado) {
     const existente = await this.#usuarios.obtenerPorId(id);
     if (!existente) throw new Error("Usuario no encontrado");
     if (usuarioLogueado.rol === "coordinador") {
-      if (existente.rol !== "encargado") {
-        throw new Error("El coordinador solo administra a sus Encargados");
+      if (existente.rol !== "lector") {
+        throw new Error("El coordinador solo administra a sus Lectores");
       }
-      if (String(existente.establecimiento?._id) !== String(usuarioLogueado.establecimiento?._id)) {
-        throw new Error("El Encargado no pertenece a su establecimiento");
+      if (String(idDeEstablecimiento(existente.establecimiento)) !==
+          String(idDeEstablecimiento(usuarioLogueado.establecimiento))) {
+        throw new Error("El Lector no pertenece a su establecimiento");
       }
     }
     return this.#usuarios.eliminar(id);
+  }
+
+  // Respuestas API: el front lee `_id` y `establecimiento.nombre`. Internamente
+  // el repositorio usa `id`; aqui se devuelven ambos y el establecimiento como
+  // objeto (con el nombre que trae el JOIN de obtenerTodos cuando aplica).
+  #aPublico(u) {
+    if (!u) return u;
+    const copia = { ...u, _id: u.id };
+    delete copia.claveHash;
+    const est = copia.establecimiento;
+    if (est && typeof est === "object") {
+      const id = est.id ?? est._id;
+      copia.establecimiento = { ...est, id, _id: id };
+    } else if (est) {
+      if (copia.establecimientoNombre) {
+        copia.establecimiento = { id: est, _id: est, nombre: copia.establecimientoNombre };
+      } else {
+        const e = this.#establecimientos.obtenerPorId(est);
+        copia.establecimiento = e ? { ...e, _id: e.id } : { id: est, _id: est, nombre: "" };
+      }
+    } else {
+      copia.establecimiento = null;
+    }
+    copia.actividades = (copia.actividades || []).map((a) => ({ ...a, _id: a.id }));
+    delete copia.establecimientoNombre;
+    return copia;
   }
 }
 

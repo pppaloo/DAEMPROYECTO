@@ -35,19 +35,6 @@ class UsuarioController {
     }
   }
 
-  async asignarActividades(req, res) {
-    try {
-      const usuario = await this.#service.asignarActividades(
-        req.params.id,
-        req.body.actividades,
-        req.usuario
-      );
-      res.json({ mensaje: "Actividades asignadas al encargado", usuario });
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
-
   async eliminar(req, res) {
     try {
       const eliminado = await this.#service.eliminar(req.params.id, req.usuario);

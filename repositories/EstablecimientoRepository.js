@@ -1,41 +1,72 @@
-const EstablecimientoModel = require("../models/establecimiento.model");
+const { obtenerConexion } = require("../db/conexion");
+const { aplanar, nowISO } = require("../db/util");
 
 class EstablecimientoRepository {
-  async crear(establecimiento) {
-    const doc = await EstablecimientoModel.create({
-      codigo: establecimiento.codigo,
-      nombre: establecimiento.nombre,
-      dependencia: establecimiento.dependencia,
-      direccion: establecimiento.direccion,
-      contacto: establecimiento.contacto,
-    });
-    return doc;
+  crear(datos) {
+    const bd = obtenerConexion();
+    const r = bd
+      .prepare(
+        `INSERT INTO establecimientos
+          (codigo, nombre, dependencia, direccion, contacto)
+         VALUES (?,?,?,?,?)`
+      )
+      .run(
+        datos.codigo,
+        datos.nombre,
+        datos.dependencia || "Municipal",
+        datos.direccion || "",
+        datos.contacto || ""
+      );
+    return this.obtenerPorId(r.lastInsertRowid);
   }
 
-  async obtenerTodos() {
-    return EstablecimientoModel.find().sort({ codigo: 1 }).lean();
+  obtenerTodos() {
+    const bd = obtenerConexion();
+    return bd
+      .prepare(`SELECT * FROM establecimientos ORDER BY codigo`)
+      .all()
+      .map(aplanar.bind(null, "establecimientos"));
   }
 
-  async obtenerPorId(id) {
-    return EstablecimientoModel.findById(id).lean();
+  obtenerPorId(id) {
+    const bd = obtenerConexion();
+    const fila = bd.prepare(`SELECT * FROM establecimientos WHERE id = ?`).get(id);
+    return fila ? aplanar("establecimientos", fila) : null;
   }
 
-  async obtenerPorCodigo(codigo) {
-    return EstablecimientoModel.findOne({ codigo: String(codigo).toUpperCase() }).lean();
+  obtenerPorCodigo(codigo) {
+    const bd = obtenerConexion();
+    const fila = bd.prepare(`SELECT * FROM establecimientos WHERE codigo = ?`).get(codigo);
+    return fila ? aplanar("establecimientos", fila) : null;
   }
 
-  async actualizar(id, datos) {
-    const resultado = await EstablecimientoModel.findByIdAndUpdate(id, datos, { new: true });
-    return resultado ? resultado.toObject() : null;
+  actualizar(id, datos) {
+    const bd = obtenerConexion();
+    const campos = [];
+    const params = [];
+    for (const c of ["codigo", "nombre", "dependencia", "direccion", "contacto"]) {
+      if (datos[c] !== undefined) {
+        campos.push(`${c} = ?`);
+        params.push(datos[c]);
+      }
+    }
+    if (campos.length) {
+      params.push(nowISO());
+      params.push(id);
+      bd.prepare(`UPDATE establecimientos SET ${campos.join(", ")} , updatedAt = ? WHERE id = ?`).run(...params);
+    }
+    return this.obtenerPorId(id);
   }
 
-  async eliminar(id) {
-    const resultado = await EstablecimientoModel.findByIdAndDelete(id);
-    return !!resultado;
+  eliminar(id) {
+    const bd = obtenerConexion();
+    const r = bd.prepare(`DELETE FROM establecimientos WHERE id = ?`).run(id);
+    return r.changes > 0;
   }
 
-  async contar() {
-    return EstablecimientoModel.countDocuments();
+  contar() {
+    const bd = obtenerConexion();
+    return bd.prepare(`SELECT COUNT(*) AS total FROM establecimientos`).get().total;
   }
 }
 

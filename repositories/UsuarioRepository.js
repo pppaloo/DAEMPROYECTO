@@ -1,50 +1,107 @@
-const bcrypt = require("bcryptjs");
-const UsuarioModel = require("../models/usuario.model");
+const { obtenerConexion } = require("../db/conexion");
+const { aplanar, nowISO } = require("../db/util");
 
 class UsuarioRepository {
-  async crear(usuario) {
-    const doc = await UsuarioModel.create({
-      rut: usuario.rut,
-      nombre: usuario.nombre,
-      email: usuario.email,
-      telefono: usuario.telefono,
-      rol: usuario.rol,
-      claveHash: bcrypt.hashSync(usuario.clave, 10),
-      establecimiento: usuario.establecimiento || null,
-      actividades: usuario.actividades || [],
-    });
-    return doc;
+  crear(datos) {
+    const bd = obtenerConexion();
+    const r = bd
+      .prepare(
+        `INSERT INTO usuarios
+          (rut, nombre, email, telefono, rol, claveHash, establecimiento)
+         VALUES (?,?,?,?,?,?,?)`
+      )
+      .run(
+        String(datos.rut || "").toUpperCase(),
+        datos.nombre,
+        datos.email || "",
+        datos.telefono || "",
+        datos.rol || "coordinador",
+        datos.claveHash,
+        datos.establecimiento ?? null
+      );
+    const id = r.lastInsertRowid;
+    for (const activ of datos.actividades || []) {
+      bd.prepare(
+        `INSERT OR IGNORE INTO usuario_actividades (usuario, actividad) VALUES (?,?)`
+      ).run(id, activ);
+    }
+    return this.obtenerPorId(id);
   }
 
-  async obtenerPorRut(rut) {
-    return UsuarioModel.findOne({ rut: String(rut).toUpperCase() }).lean();
+  obtenerPorRut(rut) {
+    const bd = obtenerConexion();
+    const fila = bd
+      .prepare(`SELECT * FROM usuarios WHERE rut = ?`)
+      .get(String(rut || "").toUpperCase());
+    return fila ? aplanar("usuarios", fila) : null;
   }
 
-  async obtenerPorId(id) {
-    return UsuarioModel.findById(id)
-      .populate("establecimiento")
-      .populate("actividades")
-      .lean();
+  obtenerPorId(id) {
+    const bd = obtenerConexion();
+    const fila = bd.prepare(`SELECT * FROM usuarios WHERE id = ?`).get(id);
+    if (!fila) return null;
+    const u = aplanar("usuarios", fila);
+    u.id = u.id;
+    u.actividades = bd
+      .prepare(
+        `SELECT a.* FROM usuario_actividades ua
+         JOIN actividades a ON a.id = ua.actividad
+         WHERE ua.usuario = ?`
+      )
+      .all(id)
+      .map(aplanar.bind(null, "actividades"));
+    return u;
   }
 
-  async obtenerTodos(filtro = {}) {
-    return UsuarioModel.find(filtro)
-      .populate("establecimiento")
-      .sort({ nombre: 1 })
-      .lean();
+  obtenerTodos() {
+    const bd = obtenerConexion();
+    const filas = bd
+      .prepare(
+        `SELECT u.*, e.nombre AS establecimientoNombre
+         FROM usuarios u
+         LEFT JOIN establecimientos e ON e.id = u.establecimiento
+         ORDER BY u.nombre`
+      )
+      .all();
+    return filas.map((f) => aplanar("usuarios", f));
   }
 
-  async actualizar(id, datos) {
-    return UsuarioModel.findByIdAndUpdate(id, datos, { new: true });
+  actualizar(id, datos) {
+    const bd = obtenerConexion();
+    const campos = [];
+    const params = [];
+    const directos = ["rut", "nombre", "email", "telefono", "rol", "claveHash", "activo"];
+    for (const c of directos) {
+      if (datos[c] !== undefined) {
+        campos.push(`${c} = ?`);
+        params.push(c === "rut" ? String(datos[c]).toUpperCase() : datos[c]);
+      }
+    }
+    if (datos.establecimiento !== undefined) {
+      campos.push(`establecimiento = ?`);
+      params.push(datos.establecimiento ?? null);
+    }
+    if (campos.length) {
+      params.push(nowISO());
+      params.push(id);
+      bd.prepare(`UPDATE usuarios SET ${campos.join(", ")} , updatedAt = ? WHERE id = ?`).run(...params);
+    }
+    if (datos.actividades !== undefined) {
+      bd.prepare(`DELETE FROM usuario_actividades WHERE usuario = ?`).run(id);
+      for (const activ of datos.actividades || []) {
+        bd.prepare(
+          `INSERT OR IGNORE INTO usuario_actividades (usuario, actividad) VALUES (?,?)`
+        ).run(id, activ);
+      }
+    }
+    return this.obtenerPorId(id);
   }
 
-  async cambiarClave(id, claveHash) {
-    return UsuarioModel.findByIdAndUpdate(id, { claveHash }, { new: true });
-  }
-
-  async eliminar(id) {
-    const resultado = await UsuarioModel.findByIdAndDelete(id);
-    return !!resultado;
+  eliminar(id) {
+    const bd = obtenerConexion();
+    bd.prepare(`DELETE FROM usuario_actividades WHERE usuario = ?`).run(id);
+    const r = bd.prepare(`DELETE FROM usuarios WHERE id = ?`).run(id);
+    return r.changes > 0;
   }
 }
 

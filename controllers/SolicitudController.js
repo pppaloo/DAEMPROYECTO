@@ -7,15 +7,6 @@ class SolicitudController {
     this.#service = new SolicitudService();
   }
 
-  async crear(req, res) {
-    try {
-      const solicitud = await this.#service.crear(req.body, req.usuario);
-      res.status(201).json({ mensaje: "Solicitud interna enviada", solicitud });
-    } catch (error) {
-      res.status(400).json({ error: error.message });
-    }
-  }
-
   async obtenerTodos(req, res) {
     try {
       const solicitudes = await this.#service.obtenerTodos(req.usuario);

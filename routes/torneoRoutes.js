@@ -35,6 +35,8 @@ router.post("/:id/posiciones", autorizarRol("admin"), (req, res) =>
   controller.registrarPosiciones(req, res)
 );
 router.put("/:id", autorizarRol("admin"), (req, res) => controller.actualizar(req, res));
+router.post("/:id/suspender", autorizarRol("admin"), (req, res) => controller.suspender(req, res));
+router.post("/:id/reactivar", autorizarRol("admin"), (req, res) => controller.reactivar(req, res));
 router.delete("/:id", autorizarRol("admin"), (req, res) => controller.eliminar(req, res));
 
 module.exports = router;

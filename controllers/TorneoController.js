@@ -40,9 +40,32 @@ class TorneoController {
 
   async actualizar(req, res) {
     try {
-      const torneo = await this.#service.actualizar(req.params.id, req.body);
+      const resultado = await this.#service.actualizar(req.params.id, req.body);
+      if (!resultado) return res.status(404).json({ error: "Torneo no encontrado" });
+      res.json({ mensaje: "Torneo actualizado", torneo: resultado.torneo, aviso: resultado.aviso });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  // Pone el torneo en estado "suspendido": no podran postular los coordinadores
+  // ni se mostrara en su panel. Es reversible (reactivar).
+  async suspender(req, res) {
+    try {
+      const torneo = await this.#service.suspender(req.params.id);
       if (!torneo) return res.status(404).json({ error: "Torneo no encontrado" });
-      res.json({ mensaje: "Torneo actualizado", torneo });
+      res.json({ mensaje: "Torneo suspendido", torneo });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  // Vuelve el torneo a su estado anterior (normalmente "inscripciones").
+  async reactivar(req, res) {
+    try {
+      const torneo = await this.#service.reactivar(req.params.id);
+      if (!torneo) return res.status(404).json({ error: "Torneo no encontrado" });
+      res.json({ mensaje: "Torneo reactivado", torneo });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

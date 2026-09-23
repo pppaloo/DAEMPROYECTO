@@ -3,8 +3,7 @@
 const ROLES = {
   ADMIN: "admin",
   COORDINADOR: "coordinador",
-  ENCARGADO: "encargado",
-  DIRECTOR: "director",
+  LECTOR: "lector",
 };
 
 const AREAS = {

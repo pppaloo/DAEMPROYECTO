@@ -11,13 +11,13 @@ Proyecto **Mini - Programacion Orientada a Objetos** (replica del patron del pro
 |-----|-------------|
 | **Admin DAEM** | Control total de la plataforma a nivel comunal. |
 | **Coordinador de Establecimiento** | Nexo DAEM <-> colegio asignado (un colegio por coordinador). |
-| **Encargado de Actividad** | Profesor/monitor que ejecuta la actividad con los alumnos. |
+| **Lector (Director de Establecimiento)** | Acceso de solo lectura a su establecimiento: nomina de estudiantes y agenda. |
 
 ## Funcionalidades principales
 
 **Admin DAEM**
 - Autenticacion por RUT + clave segura (bcrypt + JWT).
-- Gestion de usuarios: crea Coordinadores y Encargados.
+- Gestion de usuarios: crea Coordinadores y Lectores.
 - Catalogo de establecimientos (codigo ej. `A-59`, `D-868`) y dependencia (Municipal / Particular Subvencionado).
 - Publicacion y clasificacion de actividades por area (Deportiva | Artistico/Cultural) y division (MINIS, SUB 13, JUVENIL, DAMAS, VARONES).
 - Gestion de calendario y recintos (fecha, hora, lugar fisico).
@@ -28,16 +28,15 @@ Proyecto **Mini - Programacion Orientada a Objetos** (replica del patron del pro
 - Reportes y estadisticas: nomina, total de participaciones por establecimiento, total de beneficiarios (general y semestral).
 
 **Coordinador**
-- Gestion de Encargados (profesores) por actividad de su colegio.
+- Gestion de Lectores (directores) de su colegio.
 - Revisa la cartelera y se inscribe / rechaza la participacion de su colegio.
 - Validacion de la categoria segun el anio de nacimiento (ej. 2013-2015 para SUB 13).
 - Estado de solicitudes (aceptada / rechazada / en proceso) y opcion de retraccion dentro del plazo.
 - Nomina interna de estudiantes.
 
-**Encargado**
-- Registro de asistencia y cuenta de alumnos de su(s) actividad(es).
-- Solicitudes internas (recursos / participacion) hacia su Coordinador.
-- Consulta de agenda (fechas, lugares, horas).
+**Lector (Director)**
+- Consulta la nomina de estudiantes de su establecimiento (solo lectura).
+- Consulta la agenda de encuentros (fechas, lugares, horas).
 
 **Transversales**
 - Valoracion / ranking de cumplimiento (cumple > regular > no_cumple) por establecimiento-actividad, base del sorteo.
@@ -76,7 +75,7 @@ MongoDB (en memoria por defecto)   -> /models
 | `Actividad` | Area, divisiones, estado, calendario/recintos | Encapsulamiento |
 | `Torneo` | Actividad, semestre, grupos, formulario | Encapsulamiento |
 | `Inscripcion` | Ciclo de vida en_proceso -> aceptada/rechazada | Encapsulamiento, relacion |
-| `Solicitud` | Solicitud interna encargado -> coordinador | Encapsulamiento |
+| `Solicitud` | Solicitud interna establecimiento -> coordinador | Encapsulamiento |
 | `Valoracion` | Ranking de cumplimiento | Encapsulamiento |
 | `Resultado` | Puntajes, ganador, posicion | Encapsulamiento |
 | `Sorteo` | Algoritmo de emparejamiento nivelado | Metodos estaticos + encapsulamiento |
@@ -162,7 +161,10 @@ Como el seed corre automaticamente en cada arranque, los datos de ejemplo siempr
 | Coordinador M. Fuentes (B-112) | `33333333-3` | `coord123` |
 | Coordinador J. Rojas (C-204) | `44444444-4` | `coord123` |
 | Coordinador C. Diaz (D-868) | `55555555-5` | `coord123` |
-| Encargado R. Mendez (Futbol/A-59) | `66666666-6` | `encarg123` |
+| Lector Director (A-59) | `88888888-8` | `director123` |
+| Lector Director (B-112) | `99999999-9` | `director123` |
+| Lector Director (C-204) | `10101010-4` | `director123` |
+| Lector Director (D-868) | `77777777-7` | `director123` |
 
 ## Endpoints principales
 
@@ -178,8 +180,8 @@ Como el seed corre automaticamente en cada arranque, los datos de ejemplo siempr
 | POST | `/api/resultados/llaves/:id` | Registrar resultado |
 | CRUD | `/api/inscripciones` + `/alumnos` | Inscripciones y alumnos |
 | CRUD | `/api/solicitudes` | Solicitudes internas |
-| GET | `/api/alumnos/mios` , `/api/alumnos/agenda` | Encargado |
-| POST | `/api/reportes/asignar` | Valoracion de cumplimiento |
+| GET | `/api/inscripciones/nomina` | Nomina por establecimiento (Coordinador / Lector) |
+| POST | `/api/reportes/asignar` | Valoracion de cumplimiento (solo Admin) |
 | GET | `/api/reportes/nomina|participaciones|beneficiarios|historico` | Reportes |
 | GET | `/api/catalogos` | Catalogos para la SPA |
 

@@ -86,6 +86,49 @@ class InscripcionController {
     }
   }
 
+  // Postulante directo a la nomina (crea la inscripcion aceptada).
+  async postular(req, res) {
+    try {
+      const alumno = await this.#service.postular(req.body, req.usuario);
+      res.status(201).json({ mensaje: "Postulante agregado a la nomina", alumno });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  // Torneos programados por el admin a los que el coordinador puede postular.
+  async torneosPostulables(req, res) {
+    try {
+      const torneos = await this.#service.torneosParaPostulacion(req.usuario);
+      res.json(torneos);
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Estudiantes del establecimiento ya postulados a un torneo.
+  async postuladosTorneo(req, res) {
+    try {
+      const alumnos = await this.#service.postuladosTorneo(req.params.torneoId, req.usuario);
+      res.json({ total: alumnos.length, alumnos });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Coordinador postula un estudiante (de la nomina o nuevo) a un torneo.
+  async postularTorneo(req, res) {
+    try {
+      const { alumno, yaPostulado } = await this.#service.postularTorneo(req.params.torneoId, req.body, req.usuario);
+      res.status(201).json({
+        mensaje: yaPostulado ? "El estudiante ya estaba postulado al torneo" : "Estudiante postulado al torneo",
+        alumno,
+      });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   async eliminarAlumno(req, res) {
     try {
       await this.#service.eliminarAlumno(req.params.id, req.params.alumnoId, req.usuario);

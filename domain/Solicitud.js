@@ -1,21 +1,21 @@
 const { ESTADOS_SOLICITUD, TIPOS_SOLICITUD } = require("../constants/catalogos");
 
-// Solicitud interna que levanta un Encargado hacia su Coordinador
+// Solicitud interna que levanta un establecimiento hacia su Coordinador
 // (recursos o participacion) para la actividad que ejecuta.
 class Solicitud {
   #tipo;
   #detalle;
   #estado;
-  #rutEncargado;
+  #rutSolicitante;
   #rutCoordinador;
   #actividad;
   #fecha;
 
-  constructor(tipo, detalle, rutEncargado, rutCoordinador, actividad, estado = ESTADOS_SOLICITUD.EN_PROCESO) {
+  constructor(tipo, detalle, rutSolicitante, rutCoordinador, actividad, estado = ESTADOS_SOLICITUD.EN_PROCESO) {
     this.tipo = tipo;
     this.detalle = detalle;
     this.estado = estado;
-    this.rutEncargado = rutEncargado;
+    this.rutSolicitante = rutSolicitante;
     this.rutCoordinador = rutCoordinador;
     this.actividad = actividad;
     this.fecha = new Date();
@@ -57,12 +57,12 @@ class Solicitud {
     this.#estado = valor;
   }
 
-  get rutEncargado() {
-    return this.#rutEncargado;
+  get rutSolicitante() {
+    return this.#rutSolicitante;
   }
 
-  set rutEncargado(valor) {
-    this.#rutEncargado = String(valor || "").trim();
+  set rutSolicitante(valor) {
+    this.#rutSolicitante = String(valor || "").trim();
   }
 
   get rutCoordinador() {
@@ -98,7 +98,7 @@ class Solicitud {
       tipo: this.#tipo,
       detalle: this.#detalle,
       estado: this.#estado,
-      rutEncargado: this.#rutEncargado,
+      rutSolicitante: this.#rutSolicitante,
       rutCoordinador: this.#rutCoordinador,
       actividad: this.#actividad,
       fecha: this.#fecha,

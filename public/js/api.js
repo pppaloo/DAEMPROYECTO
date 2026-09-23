@@ -35,7 +35,14 @@ const API = {
     const resp = await fetch(url, opciones);
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok) {
-      const err = new Error((data && data.error) || "Error en la peticion");
+      if (resp.status === 401 && this.token) {
+        this.limpiar();
+        window.location.hash = "#login";
+        window.dispatchEvent(new Event("daem:sesion-caducada"));
+      }
+      const err = new Error(
+        (data && data.error) || (data && data.mensaje) || "Error en la peticion"
+      );
       err.status = resp.status;
       err.data = data;
       throw err;
@@ -86,6 +93,9 @@ const API = {
   async agendaTorneos() { return this.peticion("GET", "/api/torneos/agenda"); },
   async crearTorneo(datos) { return this.peticion("POST", "/api/torneos", datos); },
   async actualizarTorneo(id, datos) { return this.peticion("PUT", `/api/torneos/${id}`, datos); },
+  async suspenderTorneo(id) { return this.peticion("POST", `/api/torneos/${id}/suspender`); },
+  async reactivarTorneo(id) { return this.peticion("POST", `/api/torneos/${id}/reactivar`); },
+  async eliminarTorneo(id) { return this.peticion("DELETE", `/api/torneos/${id}`); },
   async ejecutarSorteo(id) { return this.peticion("POST", `/api/torneos/${id}/sorteo`); },
   async ejecutarBracket(id, datos = {}) { return this.peticion("POST", `/api/torneos/${id}/bracket`, datos); },
   async actualizarLlave(llaveId, datos) {
@@ -119,19 +129,14 @@ const API = {
     return this.peticion("POST", `/api/inscripciones/${inscripcionId}/alumnos`, datos);
   },
   async nomina() { return this.peticion("GET", "/api/inscripciones/nomina"); },
+  async torneosPostulables() { return this.peticion("GET", "/api/inscripciones/torneos/postulables"); },
+  async torneoPostulados(torneoId) { return this.peticion("GET", `/api/inscripciones/torneos/${torneoId}/postulados`); },
+  async postularTorneo(torneoId, datos) { return this.peticion("POST", `/api/inscripciones/torneos/${torneoId}/postular`, datos); },
 
   // ---------- Solicitudes ----------
   async solicitudes() { return this.peticion("GET", "/api/solicitudes"); },
-  async crearSolicitud(datos) { return this.peticion("POST", "/api/solicitudes", datos); },
   async responderSolicitud(id, estado, respuesta) {
     return this.peticion("PUT", `/api/solicitudes/${id}/estado`, { estado, respuesta });
-  },
-
-  // ---------- Alumnos / Agenda (Encargado) ----------
-  async misAlumnos() { return this.peticion("GET", "/api/alumnos/mios"); },
-  async agenda() { return this.peticion("GET", "/api/alumnos/agenda"); },
-  async registrarAsistencia(alumnoId, encuentroId, presente) {
-    return this.peticion("POST", `/api/alumnos/${alumnoId}/asistencia/${encuentroId}`, { presente });
   },
 
   // ---------- Valoraciones ----------
@@ -146,4 +151,9 @@ const API = {
   async reporteTorneos() { return this.peticion("GET", "/api/reportes/torneos"); },
 
   async catalogos() { return this.peticion("GET", "/api/catalogos"); },
+
+  // Notificaciones (campana) para el coordinador: listado + marcar leidas.
+  async notificaciones() { return this.peticion("GET", "/api/notificaciones"); },
+  async marcarNotificacionLeida(id) { return this.peticion("POST", `/api/notificaciones/${id}/leer`); },
+  async marcarTodasNotificacionesLeidas() { return this.peticion("POST", "/api/notificaciones/leer-todas"); },
 };

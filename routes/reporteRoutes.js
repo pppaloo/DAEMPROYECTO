@@ -12,10 +12,10 @@ const reportes = new ReporteController();
 router.use(autenticar);
 router.use(soloLecturaDireccion);
 
-// Valoraciones (ranking de cumplimiento): solo Admin DAEM las asigna.
+// Valoraciones (ranking de cumplimiento): solo Admin DAEM (el lector no accede).
 router.post("/asignar", autorizarRol("admin"), (req, res) => valoraciones.asignar(req, res));
-router.get("/valoraciones", (req, res) => valoraciones.obtenerTodos(req, res));
-router.get("/ranking", (req, res) => valoraciones.ranking(req, res));
+router.get("/valoraciones", autorizarRol("admin"), (req, res) => valoraciones.obtenerTodos(req, res));
+router.get("/ranking", autorizarRol("admin"), (req, res) => valoraciones.ranking(req, res));
 
 // Reportes y estadisticas: Admin DAEM (y lecturas para coordinadores).
 router.get("/nomina", autorizarRol("admin"), (req, res) => reportes.nomina(req, res));

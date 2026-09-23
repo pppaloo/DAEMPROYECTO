@@ -7,10 +7,10 @@ const soloLecturaDireccion = require("../middleware/soloLectura");
 const router = express.Router();
 const controller = new AlumnoController();
 
-// Gestion del Encargado sobre sus alumnos.
+// Gestion de alumnos y asistencia (Admin DAEM).
 router.use(autenticar);
 router.use(soloLecturaDireccion);
-router.use(autorizarRol("encargado", "admin"));
+router.use(autorizarRol("admin"));
 
 router.get("/mios", (req, res) => controller.obtenerMios(req, res));
 router.get("/agenda", (req, res) => controller.agenda(req, res));

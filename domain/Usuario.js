@@ -1,7 +1,7 @@
 const Persona = require("./Persona");
 const { ROLES } = require("../constants/catalogos");
 
-// Usuario del sistema (Admin DAEM, Coordinador o Encargado).
+// Usuario del sistema (Admin DAEM, Coordinador o Lector).
 // Hereda de Persona (encapsulamiento + validaciones) y agrega rol + hashing de clave.
 class Usuario extends Persona {
   #clave;
@@ -63,8 +63,8 @@ class Usuario extends Persona {
     return this.#rol === ROLES.COORDINADOR;
   }
 
-  esEncargado() {
-    return this.#rol === ROLES.ENCARGADO;
+  esLector() {
+    return this.#rol === ROLES.LECTOR;
   }
 
   obtenerResumen() {

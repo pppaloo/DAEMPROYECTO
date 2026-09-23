@@ -10,12 +10,11 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^13.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.4.2",
     "express": "^4.21.0",
-    "jsonwebtoken": "^9.0.2",
-    "mongodb-memory-server": "^10.1.4",
-    "mongoose": "^8.8.0"
+    "jsonwebtoken": "^9.0.2"
   },
   "keywords": [
     "nodejs",

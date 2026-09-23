@@ -17,15 +17,15 @@ class EstablecimientoService {
       datos.contacto
     );
     const doc = await this.#establecimientos.crear(establecimiento);
-    return this.#establecimientos.obtenerPorId(doc._id);
+    return this.#conId(this.#establecimientos.obtenerPorId(doc.id));
   }
 
   async obtenerTodos() {
-    return this.#establecimientos.obtenerTodos();
+    return this.#establecimientos.obtenerTodos().map((e) => this.#conId(e));
   }
 
   async obtenerPorId(id) {
-    return this.#establecimientos.obtenerPorId(id);
+    return this.#conId(this.#establecimientos.obtenerPorId(id));
   }
 
   async actualizar(id, datos) {
@@ -48,11 +48,18 @@ class EstablecimientoService {
     if (datos.direccion !== undefined) actualizar.direccion = datos.direccion;
     if (datos.contacto !== undefined) actualizar.contacto = datos.contacto;
 
-    return this.#establecimientos.actualizar(id, actualizar);
+    return this.#conId(this.#establecimientos.actualizar(id, actualizar));
   }
 
   async eliminar(id) {
     return this.#establecimientos.eliminar(id);
+  }
+
+  // La BD interna usa `id`; el front consume `_id`. Las respuestas de API
+  // llevan ambos para no romper el contrato de api.js/app.js.
+  #conId(item) {
+    if (!item) return item;
+    return { ...item, _id: item.id };
   }
 }
 

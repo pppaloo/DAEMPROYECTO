@@ -1,3 +1,8 @@
 node_modules/
 .env
 *.log
+.env.mongo.bak
+logs-servidor*.txt
+data/*.db-wal
+data/*.db-shm
+data/*.db-journal

@@ -30,7 +30,7 @@
         Admin: <code>11111111-1 / admin123</code><br />
         Coordinador P. Gonzalez: <code>22222222-2 / coord123</code><br />
         Coordinador M. Fuentes: <code>33333333-3 / coord123</code><br />
-        Director (solo lectura): <code>77777777-7 / director123</code>
+        Lector / Director (solo lectura): <code>77777777-7 / director123</code>
       </div>
     </div>
   </div>
@@ -49,6 +49,11 @@
         <button id="btn-cerrar-menu" class="btn-cerrar-menu" aria-label="Cerrar menu">&times;</button>
       </div>
       <div id="usuario-actual" class="usuario-actual"></div>
+      <button id="btn-campana-side" class="btn-campana-side oculta" title="Notificaciones del Admin" aria-label="Notificaciones del Admin">
+        <span class="campana-ico">&#128276;</span>
+        <span class="campana-txt">Notificaciones</span>
+        <span class="badge-campana oculta">0</span>
+      </button>
       <nav id="nav"></nav>
       <button id="btn-salir" class="btn-salir">Cerrar sesion</button>
     </aside>
@@ -64,6 +69,6 @@
   </template>
 
   <script src="/js/api.js"></script>
-  <script src="/js/app.js"></script>
+  <script src="/js/app.js?v=04"></script>
 </body>
 </html>

@@ -1,62 +1,146 @@
 const Equipo = require("../domain/Equipo");
 const EquipoRepository = require("../repositories/EquipoRepository");
-const InscripcionModel = require("../models/inscripcion.model");
-const TorneoModel = require("../models/torneo.model");
-const AlumnoModel = require("../models/alumno.model");
+const InscripcionRepository = require("../repositories/InscripcionRepository");
+const AlumnoRepository = require("../repositories/AlumnoRepository");
+const TorneoRepository = require("../repositories/TorneoRepository");
+const { obtenerConexion } = require("../db/conexion");
+const { descodificarJson } = require("../db/util");
+
+// Los repos no agregan _id: la capa de servicio que expone a la API agrega
+// _id (mirror de id) en equipos y alumnos para el front.
+function aEquipo(e) {
+  if (!e) return e;
+  e._id = e.id;
+  (e.alumnos || []).forEach((a) => {
+    a._id = a.id;
+    if (a.establecimiento && typeof a.establecimiento === "object") {
+      a.establecimiento._id = a.establecimiento.id;
+    }
+  });
+  return e;
+}
 
 // Gestiona los equipos de un torneo. Un equipo agrupa estudiantes de
 // distintos establecimientos: se puede armar por sorteo automatico
 // (distribuye la nomina de inscritos) o manualmente.
 class EquipoService {
   #equipos;
+  #inscripciones;
+  #alumnos;
+  #torneos;
 
   constructor() {
     this.#equipos = new EquipoRepository();
+    this.#inscripciones = new InscripcionRepository();
+    this.#alumnos = new AlumnoRepository();
+    this.#torneos = new TorneoRepository();
   }
 
   // Pool de estudiantes disponibles: los de inscripciones aceptadas del
-  // torneo que aun no estan asignados a ningun equipo.
+  // torneo que aun no estan asignados a ningun equipo. Incluye tanto las
+  // inscripciones completas asociadas al torneo como los estudiantes
+  // postulados individualmente (alumno.torneos).
   async obtenerPool(torneoId) {
-    const inscripciones = await InscripcionModel.find({
+    const inscripciones = await this.#inscripciones.obtenerTodos({
       torneo: torneoId,
       estado: "aceptada",
-    })
-      .populate("alumnos")
-      .lean();
+    });
+    const directos = await this.#alumnos.obtenerTodos({ torneos: torneoId });
 
     const asignados = await this.#equipos.obtenerPorTorneo(torneoId);
     const usados = new Set();
-    asignados.forEach((e) => (e.alumnos || []).forEach((a) => usados.add(String(a._id))));
+    asignados.forEach((e) => (e.alumnos || []).forEach((a) => usados.add(String(a.id))));
 
     const alumnos = [];
     const vistos = new Set();
+    const agregar = (a) => {
+      const id = String(a.id);
+      if (vistos.has(id) || usados.has(id)) return;
+      vistos.add(id);
+      alumnos.push(a);
+    };
+    directos.forEach(agregar);
     for (const insc of inscripciones) {
-      for (const a of insc.alumnos || []) {
-        const id = String(a._id);
-        if (vistos.has(id) || usados.has(id)) continue;
-        vistos.add(id);
-        alumnos.push(a);
-      }
+      for (const a of insc.alumnos || []) agregar(a);
     }
 
     return this.#enriquecerConEstablecimiento(alumnos);
   }
 
   async #enriquecerConEstablecimiento(alumnos) {
-    const ids = alumnos.map((a) => a._id);
-    const ricos = ids.length
-      ? await AlumnoModel.find({ _id: { $in: ids } })
-          .populate("establecimiento")
-          .lean()
-      : [];
+    if (!alumnos.length) return [];
+    const ids = alumnos.map((a) => a.id);
+    const marcadores = ids.map(() => "?").join(",");
+    const bd = obtenerConexion();
+    const filas = bd
+      .prepare(
+        `SELECT a.*,
+                e.id AS establecimientoId, e.codigo AS establecimientoCodigo,
+                e.nombre AS establecimientoNombre, e.dependencia AS establecimientoDependencia,
+                e.direccion AS establecimientoDireccion, e.contacto AS establecimientoContacto,
+                ac.id AS actividadId, ac.nombre AS actividadNombre, ac.area AS actividadArea,
+                ac.divisiones AS actividadDivisiones, ac.anio AS actividadAnio,
+                ac.semestre AS actividadSemestre, ac.estado AS actividadEstado
+         FROM alumnos a
+         LEFT JOIN establecimientos e ON e.id = a.establecimiento
+         LEFT JOIN actividades ac ON ac.id = a.actividad
+         WHERE a.id IN (${marcadores})`
+      )
+      .all(...ids);
     const porId = {};
-    ricos.forEach((a) => { porId[String(a._id)] = a; });
-    return alumnos.map((a) => porId[String(a._id)] || a);
+    filas.forEach((f) => {
+      porId[String(f.id)] = f;
+    });
+    return alumnos.map((a) => {
+      const f = porId[String(a.id)];
+      if (!f) return a;
+      const establecimiento = f.establecimientoId
+        ? {
+            id: f.establecimientoId,
+            _id: f.establecimientoId,
+            codigo: f.establecimientoCodigo,
+            nombre: f.establecimientoNombre,
+            dependencia: f.establecimientoDependencia,
+            direccion: f.establecimientoDireccion,
+            contacto: f.establecimientoContacto,
+          }
+        : null;
+      const actividad = f.actividadId
+        ? {
+            id: f.actividadId,
+            _id: f.actividadId,
+            nombre: f.actividadNombre,
+            area: f.actividadArea,
+            divisiones: descodificarJson(f.actividadDivisiones, []),
+            anio: f.actividadAnio,
+            semestre: f.actividadSemestre,
+            estado: f.actividadEstado,
+          }
+        : null;
+      return {
+        id: f.id,
+        _id: f.id,
+        rut: f.rut,
+        nombre: f.nombre,
+        genero: f.genero,
+        fechaNacimiento: f.fechaNacimiento,
+        apoderado: f.apoderado,
+        email: f.email,
+        telefono: f.telefono,
+        establecimiento,
+        actividad,
+        division: f.division,
+        inscripcion: f.inscripcion,
+        torneos: a.torneos || [],
+        createdAt: f.createdAt,
+        updatedAt: f.updatedAt,
+      };
+    });
   }
 
   // Distribuye automaticamente a los inscritos en N equipos balanceados.
   async sortear(torneoId, { cantidad }) {
-    const torneo = await TorneoModel.findById(torneoId).lean();
+    const torneo = await this.#torneos.obtenerPorId(torneoId);
     if (!torneo) throw new Error("Torneo no encontrado");
     const pool = await this.obtenerPool(torneoId);
     if (pool.length < 2) {
@@ -78,20 +162,20 @@ class EquipoService {
       nombre: `Equipo ${String.fromCharCode(65 + i)}`,
       alumnos: [],
     }));
-    base.forEach((a, idx) => torque[idx % n].alumnos.push(a._id));
+    base.forEach((a, idx) => torque[idx % n].alumnos.push(a.id));
 
     await this.#eliminarPorTorneo(torneoId);
     const creados = [];
     for (const t of torque) creados.push(await this.#equipos.crear(t));
-    return this.#equipos.obtenerPorTorneo(torneoId);
+    return this.#equipos.obtenerPorTorneo(torneoId).map(aEquipo);
   }
 
   // Crea un equipo manual con estudiantes seleccionados del pool.
   async crear(torneoId, { nombre, alumnos = [] }) {
-    const torneo = await TorneoModel.findById(torneoId).lean();
+    const torneo = await this.#torneos.obtenerPorId(torneoId);
     if (!torneo) throw new Error("Torneo no encontrado");
     const pool = await this.obtenerPool(torneoId);
-    const disponibles = new Set(pool.map((a) => String(a._id)));
+    const disponibles = new Set(pool.map((a) => String(a.id)));
     const ids = (Array.isArray(alumnos) ? alumnos : [])
       .filter((id) => id && disponibles.has(String(id)))
       .map((id) => String(id));
@@ -100,11 +184,11 @@ class EquipoService {
 
     const equipo = new Equipo(torneoId, nombre, ids);
     const doc = await this.#equipos.crear(equipo.obtenerResumen());
-    return this.#equipos.obtenerPorId(doc._id);
+    return aEquipo(this.#equipos.obtenerPorId(doc.id));
   }
 
   async listar(torneoId) {
-    return this.#equipos.obtenerPorTorneo(torneoId);
+    return this.#equipos.obtenerPorTorneo(torneoId).map(aEquipo);
   }
 
   async eliminar(torneoId, equipoId) {

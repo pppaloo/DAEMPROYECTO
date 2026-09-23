@@ -1,4 +1,3 @@
-const Solicitud = require("../domain/Solicitud");
 const SolicitudRepository = require("../repositories/SolicitudRepository");
 
 class SolicitudService {
@@ -8,42 +7,17 @@ class SolicitudService {
     this.#solicitudes = new SolicitudRepository();
   }
 
-  // El encargado levanta una solicitud (recursos/participacion) a su coordinador.
-  async crear(datos, usuario) {
-    if (usuario.rol !== "encargado") {
-      throw new Error("Solo un Encargado puede levantar solicitudes internas");
-    }
-    const rutCoordinador = datos.rutCoordinador || "";
-    const solicitud = new Solicitud(
-      datos.tipo,
-      datos.detalle,
-      usuario.rut,
-      rutCoordinador,
-      datos.actividad || null
-    );
-
-    const doc = await this.#solicitudes.crear({
-      ...solicitud.obtenerResumen(),
-      establecimiento: usuario.establecimiento?._id || null,
-    });
-
-    return this.#solicitudes.obtenerPorId(doc._id);
-  }
-
-  // Encargado ve las suyas; coordinador ve las de su establecimiento.
+  // El coordinador ve las solicitudes de su establecimiento; admin las ve todas.
   async obtenerTodos(usuario) {
-    if (usuario.rol === "encargado") {
-      return this.#solicitudes.obtenerTodos({ rutEncargado: usuario.rut });
-    }
     if (usuario.rol === "coordinador") {
       return this.#solicitudes.obtenerTodos({
-        establecimiento: usuario.establecimiento?._id,
+        establecimiento: usuario.establecimiento?.id,
       });
     }
     return this.#solicitudes.obtenerTodos();
   }
 
-  // El coordinador aprueba o rechaza la solicitud de su encargado.
+  // El coordinador aprueba o rechaza la solicitud de su establecimiento.
   async cambiarEstado(id, estado, respuesta, usuario) {
     if (usuario.rol !== "coordinador") {
       throw new Error("Solo el Coordinador puede responder solicitudes internas");
@@ -53,7 +27,7 @@ class SolicitudService {
     }
     const solicitud = await this.#solicitudes.obtenerPorId(id);
     if (!solicitud) throw new Error("Solicitud no encontrada");
-    if (String(solicitud.establecimiento?._id) !== String(usuario.establecimiento?._id)) {
+    if (String(solicitud.establecimiento?.id) !== String(usuario.establecimiento?.id)) {
       throw new Error("La solicitud no pertenece a su establecimiento");
     }
     return this.#solicitudes.cambiarEstado(id, estado, respuesta || "");
@@ -62,9 +36,6 @@ class SolicitudService {
   async eliminar(id, usuario) {
     const solicitud = await this.#solicitudes.obtenerPorId(id);
     if (!solicitud) throw new Error("Solicitud no encontrada");
-    if (usuario.rol === "encargado" && solicitud.rutEncargado !== usuario.rut) {
-      throw new Error("Solo el autor puede eliminar la solicitud");
-    }
     if (solicitud.estado !== "en_proceso") {
       throw new Error("No se puede eliminar una solicitud ya respondida");
     }

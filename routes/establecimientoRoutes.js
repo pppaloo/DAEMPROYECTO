@@ -7,12 +7,12 @@ const soloLecturaDireccion = require("../middleware/soloLectura");
 const router = express.Router();
 const controller = new EstablecimientoController();
 
-// Lectura publica para usuarios autenticados; escritura solo Admin DAEM.
+// Lectura para Admin y Coordinador (el lector no accede al listado); escritura solo Admin.
 router.use(autenticar);
 router.use(soloLecturaDireccion);
 
-router.get("/", (req, res) => controller.obtenerTodos(req, res));
-router.get("/:id", (req, res) => controller.obtenerPorId(req, res));
+router.get("/", autorizarRol("admin", "coordinador"), (req, res) => controller.obtenerTodos(req, res));
+router.get("/:id", autorizarRol("admin", "coordinador"), (req, res) => controller.obtenerPorId(req, res));
 
 router.post("/", autorizarRol("admin"), (req, res) => controller.crear(req, res));
 router.put("/:id", autorizarRol("admin"), (req, res) => controller.actualizar(req, res));

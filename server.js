@@ -18,13 +18,27 @@ const solicitudRoutes = require("./routes/solicitudRoutes");
 const resultadoRoutes = require("./routes/resultadoRoutes");
 const reporteRoutes = require("./routes/reporteRoutes");
 const catalogRoutes = require("./routes/catalogRoutes");
+const notificacionRoutes = require("./routes/notificacionRoutes");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+// Servir los estaticos sin cache: los cambios de JS/CSS/HTML deben reflejarse
+// de inmediato (el admin programa torneos y el coordinador los postula; un
+// app.js cacheado hacia que el mensaje de exito y las horas no se vieran).
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders: (res, ruta) => {
+      if (/\.(js|css|html|json)$/i.test(ruta)) {
+        res.setHeader("Cache-Control", "no-store");
+      } else {
+        res.setHeader("Cache-Control", "public, max-age=3600");
+      }
+    },
+  })
+);
 
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", usuarioRoutes);
@@ -38,14 +52,15 @@ app.use("/api/solicitudes", solicitudRoutes);
 app.use("/api/resultados", resultadoRoutes);
 app.use("/api/reportes", reporteRoutes);
 app.use("/api/catalogos", catalogRoutes);
+app.use("/api/notificaciones", notificacionRoutes);
 
 app.get("/api/health", (req, res) => {
   res.json({
     estado: "activo",
     proyecto: "DAEM",
     version: "1.0.0",
-    baseDatos: "MongoDB",
-    roles: ["admin", "coordinador", "encargado", "director"],
+    baseDatos: "SQLite",
+    roles: ["admin", "coordinador", "lector"],
   });
 });
 

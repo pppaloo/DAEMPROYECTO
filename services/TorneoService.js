@@ -3,19 +3,67 @@ const Torneo = require("../domain/Torneo");
 const TorneoRepository = require("../repositories/TorneoRepository");
 const LlaveRepository = require("../repositories/LlaveRepository");
 const PosicionRepository = require("../repositories/PosicionRepository");
-const InscripcionModel = require("../models/inscripcion.model");
-const LlaveModel = require("../models/llave.model");
-const EquipoModel = require("../models/equipo.model");
+const EquipoRepository = require("../repositories/EquipoRepository");
+const AlumnoRepository = require("../repositories/AlumnoRepository");
+const InscripcionRepository = require("../repositories/InscripcionRepository");
+const NotificacionService = require("./NotificacionService");
+const { obtenerConexion } = require("../db/conexion");
+const { descodificarJson } = require("../db/util");
+
+// Edad en anios a partir de la fecha de nacimiento (misma logica que InscripcionService).
+function calcularEdad(fechaNacimiento) {
+  if (!fechaNacimiento) return null;
+  const nac = new Date(fechaNacimiento);
+  const hoy = new Date();
+  let edad = hoy.getFullYear() - nac.getFullYear();
+  const m = hoy.getMonth() - nac.getMonth();
+  if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad -= 1;
+  return edad;
+}
+
+// El repo de torneos devuelve la actividad como campo plano (actividad +
+// actividadNombre/Area/...); el front consume t.actividad como objeto con
+// _id. Tambien se agrega _id a nivel torneo (los repos no lo ponen).
+function aTorneo(t) {
+  if (!t) return t;
+  t._id = t.id;
+  if (t.actividad != null) {
+    t.actividad = {
+      id: t.actividad,
+      _id: t.actividad,
+      nombre: t.actividadNombre,
+      area: t.actividadArea,
+      divisiones: descodificarJson(t.actividadDivisiones, []),
+      anio: t.actividadAnio,
+    };
+  }
+  return t;
+}
+
+// Normaliza la actividad de un torneo (objeto tras aTorneo o numero crudo
+// del repo) a su id entero para usarla en inserciones de llaves/SQL.
+function idActividad(t) {
+  if (!t || t.actividad == null) return null;
+  return t.actividad.id != null ? t.actividad.id : t.actividad;
+}
 
 class TorneoService {
   #torneos;
   #llaves;
   #posiciones;
+  #equipos;
+  #alumnos;
+  #inscripciones;
+  #notificaciones;
 
   constructor() {
     this.#torneos = new TorneoRepository();
     this.#llaves = new LlaveRepository();
     this.#posiciones = new PosicionRepository();
+    this.#equipos = new EquipoRepository();
+    this.#alumnos = new AlumnoRepository();
+    this.#inscripciones = new InscripcionRepository();
+    this.#notificaciones = new NotificacionService();
   }
 
   async crear(datos) {
@@ -24,7 +72,7 @@ class TorneoService {
       datos.actividad,
       datos.division,
       datos.anio,
-      datos.semestre,
+      datos.semestre ?? 1,
       datos.estado,
       datos.grupos,
       {
@@ -36,15 +84,15 @@ class TorneoService {
       datos.formato || "amistoso"
     );
     const doc = await this.#torneos.crear(torneo);
-    return this.#torneos.obtenerPorId(doc._id);
+    return aTorneo(doc);
   }
 
   async obtenerTodos(filtro = {}) {
-    return this.#torneos.obtenerTodos(filtro);
+    return this.#torneos.obtenerTodos(filtro).map(aTorneo);
   }
 
   async obtenerPorId(id) {
-    return this.#torneos.obtenerPorId(id);
+    return aTorneo(this.#torneos.obtenerPorId(id));
   }
 
   async actualizar(id, datos) {
@@ -70,7 +118,60 @@ class TorneoService {
       actualizar.fechaCierreInscripcion = datos.fechaCierreInscripcion ? new Date(datos.fechaCierreInscripcion) : null;
     }
 
-    return this.#torneos.actualizar(id, actualizar);
+    const torneo = await this.#torneos.actualizar(id, actualizar);
+
+    // Si se ajustaron los requisitos y habia estudiantes inscritos, se retiran
+    // SOLO los que ya no cumplen los nuevos requisitos y se avisa al admin.
+    let aviso = "";
+    if (datos.requisitos !== undefined) {
+      const req = { ...(existente.requisitos || {}), ...datos.requisitos };
+      const genero = String(req.genero || "").trim().toLowerCase();
+      const min = req.edadMinima != null ? Number(req.edadMinima) : null;
+      const max = req.edadMaxima != null ? Number(req.edadMaxima) : null;
+      const inscritos = await this.#alumnos.obtenerTodos({ torneos: id });
+      const aRetirar = inscritos.filter((a) => {
+        if (genero === "varones" && a.genero !== "M") return true;
+        if (genero === "damas" && a.genero !== "F") return true;
+        if (a.fechaNacimiento) {
+          const edad = calcularEdad(a.fechaNacimiento);
+          if (min !== null && (edad === null || edad < min)) return true;
+          if (max !== null && (edad === null || edad > max)) return true;
+        }
+        return false;
+      });
+      if (aRetirar.length) {
+        const ids = aRetirar.map((a) => a.id);
+        const marcadores = ids.map(() => "?").join(",");
+        const bd = obtenerConexion();
+        // $pull del torneo en alumnos asociados.
+        bd.prepare(`DELETE FROM alumno_torneos WHERE torneo = ? AND alumno IN (${marcadores})`).run(id, ...ids);
+        // Posiciones de los establecimientos afectados.
+        const ests = bd
+          .prepare(`SELECT DISTINCT establecimiento FROM alumnos WHERE id IN (${marcadores})`)
+          .all(...ids)
+          .map((r) => r.establecimiento);
+        if (ests.length) {
+          const marcadoresEst = ests.map(() => "?").join(",");
+          bd.prepare(`DELETE FROM posiciones WHERE torneo = ? AND establecimiento IN (${marcadoresEst})`).run(id, ...ests);
+        }
+        // Los saca de las inscripciones asociadas al torneo.
+        bd.prepare(
+          `DELETE FROM inscripcion_alumnos
+           WHERE inscripcion IN (SELECT i.id FROM inscripciones i WHERE i.torneo = ?)
+             AND alumno IN (${marcadores})`
+        ).run(id, ...ids);
+        aviso = `Se retiraron ${aRetirar.length} estudiante(s) que ya no cumplen los requisitos del torneo.`;
+      }
+    }
+
+    if (datos.requisitos !== undefined) {
+      await this.#notificaciones.crearParaCoordinadores({
+        tipo: "requisitos",
+        torneoId: id,
+        mensaje: `El Admin actualizo los requisitos del torneo "${existente.nombre}". Revisa que tus inscritos sigan cumpliendolos.`,
+      }).catch(() => {});
+    }
+    return { torneo: aTorneo(torneo), aviso };
   }
 
   // Empuja el ganador de una llave hacia la llave de la siguiente ronda.
@@ -94,14 +195,14 @@ class TorneoService {
   async #obtenerParticipantes(torneoId) {
     const torneo = await this.#torneos.obtenerPorId(torneoId);
     if (!torneo) throw new Error("Torneo no encontrado");
-    const equipos = await EquipoModel.find({ torneo: torneoId }).lean();
+    const equipos = await this.#equipos.obtenerPorTorneo(torneoId);
     if (!equipos.length) {
       throw new Error(
         "El torneo no tiene equipos. Cree o sortee los equipos antes de ejecutar el sorteo"
       );
     }
     return equipos.map((eq) => ({
-      establecimiento: eq._id,
+      establecimiento: eq.id,
       nombre: eq.nombre,
       division: "Libre",
       estado: "regular",
@@ -129,7 +230,7 @@ class TorneoService {
       const cruces = Sorteo.crucesRoundRobin(g.participantes);
       if (cruces.length) {
         await this.#llaves.crearMuchas(cruces.map(([a, b], idx) => ({
-          torneo: torneoId, actividad: torneo.actividad._id, division: [a.division, b.division].find(Boolean) || "Libre",
+          torneo: torneoId, actividad: idActividad(torneo), division: [a.division, b.division].find(Boolean) || "Libre",
           grupo: g.nombre, equipos: [a.establecimiento, b.establecimiento], bye: false, estado: "pendiente", nivel: 0, orden: idx,
         })));
       }
@@ -201,7 +302,10 @@ class TorneoService {
       throw new Error("Se necesitan al menos 2 equipos con puntuacion para armar las eliminatorias");
     }
     const idsClasificados = clasificados.map((p) => String(p.establecimiento));
-    await LlaveModel.deleteMany({ torneo: torneoId, nivel: { $gte: 1 } });
+
+    // Limpia rondas anteriores (nivel >= 1) del torneo.
+    const bd = obtenerConexion();
+    bd.prepare(`DELETE FROM llaves WHERE torneo = ? AND nivel >= 1`).run(torneoId);
 
     // Primera ronda segun el modo de sorteo elegido.
     let cruces;
@@ -240,7 +344,7 @@ class TorneoService {
     const docsR1 = [];
     cruces.forEach(([a, b], idx) => {
       docsR1.push({
-        torneo: torneoId, actividad: torneo.actividad._id, division: "Libre",
+        torneo: torneoId, actividad: idActividad(torneo), division: "Libre",
         grupo: fases[0] || "Eliminatoria", equipos: [a, b].filter(Boolean),
         bye: !b, estado: "pendiente", nivel: 1, orden: idx,
       });
@@ -251,7 +355,7 @@ class TorneoService {
       const count = Math.ceil(rondaAnterior.length / 2);
       const specs = [];
       for (let i = 0; i < count; i++) {
-        specs.push({ torneo: torneoId, actividad: torneo.actividad._id, division: "Libre", grupo: fases[nivel - 1] || "Eliminatoria", equipos: [], bye: false, estado: "pendiente", nivel, orden: i });
+        specs.push({ torneo: torneoId, actividad: idActividad(torneo), division: "Libre", grupo: fases[nivel - 1] || "Eliminatoria", equipos: [], bye: false, estado: "pendiente", nivel, orden: i });
       }
       const docsNivel = await this.#llaves.crearMuchas(specs);
       for (let i = 0; i < docsNivel.length; i++) {
@@ -279,22 +383,25 @@ class TorneoService {
   }
 
   async obtenerAgenda() {
-    const torneosVigentes = await this.#torneos.obtenerTodos({
-      estado: { $in: ["activo", "en_curso", "inscripciones"] },
-    });
-    const ids = torneosVigentes.map((t) => t._id);
+    const torneosVigentes = await this.#torneos.obtenerTodos();
+    const vigentes = torneosVigentes.filter((t) =>
+      ["activo", "en_curso", "inscripciones"].includes(t.estado)
+    );
+    const ids = vigentes.map((t) => t.id);
     const llaves = ids.length
       ? await this.#llaves.obtenerTodos({ torneo: { $in: ids } })
       : [];
 
     const llavesConFecha = llaves.filter((l) => l.fecha);
     const mapaTorneo = {};
-    for (const t of torneosVigentes) mapaTorneo[String(t._id)] = t;
+    for (const t of vigentes) mapaTorneo[String(t.id)] = aTorneo(t);
 
     const eventos = llavesConFecha.map((l) => {
       const torneo = mapaTorneo[String(l.torneo._id || l.torneo)] || {};
       const equipos = (l.equipos || []).map((e) => e && (e.nombre || e._id)).filter(Boolean);
       return {
+        llaveId: l._id,
+        formato: torneo.formato || "amistoso",
         fecha: l.fecha,
         hora: l.hora,
         horaTermino: l.horaTermino || "",
@@ -376,8 +483,54 @@ class TorneoService {
     return this.#posiciones.obtenerPorTorneo(torneoId);
   }
 
+  async suspender(id) {
+    const existente = await this.#torneos.obtenerPorId(id);
+    if (!existente) throw new Error("Torneo no encontrado");
+    const torneo = await this.#torneos.actualizar(id, {
+      estado: "suspendido",
+      estadoPrevio: existente.estado,
+    });
+    // El admin suspendio el torneo: aviso inmediato a los coordinadores.
+    await this.#notificaciones.crearParaCoordinadores({
+      tipo: "suspension",
+      torneoId: id,
+      mensaje: `El Admin suspendio el torneo "${existente.nombre}". Los coordinadores no podran inscribir estudiantes hasta que se reactive.`,
+    }).catch(() => {});
+    return aTorneo(torneo);
+  }
+
+  async reactivar(id) {
+    const suspendido = await this.#torneos.obtenerPorId(id);
+    if (!suspendido) throw new Error("Torneo no encontrado");
+    const torneo = await this.#torneos.actualizar(id, {
+      estado: suspendido.estadoPrevio || "programado",
+    });
+    // Se reactivo: los coordinadores vuelven a poder inscribir.
+    await this.#notificaciones.crearParaCoordinadores({
+      tipo: "reactivacion",
+      torneoId: id,
+      mensaje: `El Admin reabrio el torneo "${suspendido.nombre}". Las inscripciones vuelven a estar disponibles para los coordinadores.`,
+    }).catch(() => {});
+    return aTorneo(torneo);
+  }
+
   async eliminar(id) {
+    const existente = await this.#torneos.obtenerPorId(id);
+    // Cascada completa: cualquier dato que referencia al torneo se borra con el.
     await this.#llaves.eliminarPorTorneo(id);
+    await this.#equipos.eliminarPorTorneo(id);
+    const bd = obtenerConexion();
+    await bd.prepare(`DELETE FROM posiciones WHERE torneo = ?`).run(id);
+    await bd.prepare(`DELETE FROM inscripciones WHERE torneo = ?`).run(id);
+    // Quita el torneo de los alumnos que lo tenian asociado.
+    await bd.prepare(`DELETE FROM alumno_torneos WHERE torneo = ?`).run(id);
+    if (existente) {
+      await this.#notificaciones.crearParaCoordinadores({
+        tipo: "eliminacion",
+        torneoId: null,
+        mensaje: `El Admin elimino definitivamente el torneo "${existente.nombre}".`,
+      }).catch(() => {});
+    }
     return this.#torneos.eliminar(id);
   }
 }
