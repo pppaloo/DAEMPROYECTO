@@ -19,10 +19,66 @@
 body {
   font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   color: var(--texto);
-  background: var(--fondo);
+  background-color: var(--fondo);
+  background-image: url("/img/fondo.jpg");
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+  background-repeat: no-repeat;
 }
 
 .oculta { display: none !important; }
+
+/* ---------- Buscador de actividades ---------- */
+.act-buscador { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+.act-buscador input {
+  width: 100%;
+  max-width: 340px;
+  padding: 9px 12px;
+  border: 1px solid var(--borde);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--blanco);
+  color: inherit;
+}
+.act-buscador input:focus { outline: 2px solid var(--primario); border-color: transparent; }
+.act-buscador-contador {
+  font-size: 13px; font-weight: 700; color: var(--primario);
+  background: #f8efed; border: 1px solid var(--borde); border-radius: 20px;
+  padding: 5px 12px; white-space: nowrap;
+}
+
+/* ---------- Tostadas y modal de confirmacion ---------- */
+.tostada {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--blanco); border: 1px solid var(--borde); border-left: 4px solid var(--azul);
+  color: var(--texto); padding: 11px 14px; border-radius: 8px; font-size: 14px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.16); transition: opacity 0.2s;
+}
+.tostada button {
+  border: none; background: transparent; font-size: 18px; line-height: 1; cursor: pointer;
+  color: #98a1b3; padding: 0;
+}
+.tostada button:hover { color: var(--err); }
+.tostada-ok { border-left-color: var(--ok); }
+.tostada-ok span::before { content: "\2714  "; color: var(--ok); font-weight: 700; }
+.tostada-error { border-left-color: var(--err); }
+.tostada-error span::before { content: "\26A0  "; color: var(--err); font-weight: 700; }
+.tostada-info { border-left-color: var(--azul); }
+.tostada-info span::before { content: "\2139  "; color: var(--azul); font-weight: 700; }
+
+.modal-overlay {
+  position: fixed; inset: 0; background: rgba(15, 18, 30, 0.55); z-index: 10001;
+  display: flex; align-items: center; justify-content: center; padding: 16px;
+}
+.modal-card {
+  background: var(--blanco); border-radius: 12px; max-width: 440px; width: 100%;
+  padding: 22px 24px; box-shadow: 0 12px 40px rgba(0,0,0,0.3);
+}
+.modal-card h3 { color: var(--primario); margin-bottom: 8px; font-size: 17px; }
+.modal-card p { font-size: 14px; line-height: 1.55; color: var(--texto); }
+.modal-acciones { display: flex; flex-direction: row; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.modal-acciones .btn { padding: 8px 16px; }
 
 /* ---------- Login ---------- */
 .vista { min-height: 100vh; display: flex; align-items: center; justify-content: center; }
@@ -34,13 +90,11 @@ body {
   border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0,0,0,0.12);
 }
-.login-logo { text-align: center; margin-bottom: 24px; }
-.logo-icono {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 64px; height: 64px; border-radius: 50%;
-  background: var(--primario); color: #fff; font-size: 26px; font-weight: 700;
-}
-.login-logo h1 { margin-top: 10px; color: var(--primario); letter-spacing: 2px; }
+.login-logo { margin-bottom: 24px; }
+.login-marca { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.login-marca-img { height: 64px; width: auto; object-fit: contain; }
+.login-marca-texto { text-align: left; }
+.login-logo h1 { color: var(--primario); letter-spacing: 2px; font-size: 30px; }
 .login-logo p { color: #6b7590; font-size: 13px; margin-top: 4px; }
 .login-caja form label { display: block; font-size: 13px; margin: 12px 0 4px; font-weight: 600; }
 .login-caja form input {
@@ -62,7 +116,8 @@ body {
   padding: 18px 14px; display: flex; flex-direction: column; flex-shrink: 0;
 }
 .sidebar-cabecera { display: flex; align-items: center; justify-content: space-between; }
-.sidebar-logo { font-size: 24px; font-weight: 800; letter-spacing: 2px; text-align: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.15); }
+.sidebar-logo { font-size: 24px; font-weight: 800; letter-spacing: 2px; text-align: center; padding-bottom: 14px; border-bottom: 1px solid rgba(255,255,255,0.15); display: flex; align-items: center; justify-content: center; gap: 8px; }
+.sidebar-logo-img { height: 30px; width: auto; object-fit: contain; }
 .btn-menu {
   display: none; position: fixed; top: 12px; left: 12px; z-index: 60;
   flex-direction: column; justify-content: center; align-items: center; gap: 5px;

@@ -21,6 +21,44 @@ const mostrarExito = (msg) => {
   __timerExito = setTimeout(() => { preview.style.opacity = "0"; setTimeout(() => preview.remove(), 300); }, 3200);
 };
 
+// ---------- Toasts (reemplazan a alert) ----------
+function mostrarMensaje(texto, tipo = "info") {
+  let cont = document.getElementById("tostadas");
+  if (!cont) {
+    cont = document.createElement("div");
+    cont.id = "tostadas";
+    cont.style.cssText = "position:fixed;top:14px;right:14px;z-index:10000;display:flex;flex-direction:column;gap:10px;max-width:360px;";
+    document.body.appendChild(cont);
+  }
+  const el = document.createElement("div");
+  el.className = "tostada tostada-" + tipo;
+  el.innerHTML = `<span>${esc(String(texto))}</span><button type="button" aria-label="Cerrar">&times;</button>`;
+  el.querySelector("button").onclick = () => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); };
+  cont.appendChild(el);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 3800);
+}
+
+// ---------- Modal de confirmacion (reemplaza a confirm) ----------
+// Devuelve Promise<boolean>.
+function confirmarMensaje(texto, titulo = "Confirmar") {
+  return new Promise((resolver) => {
+    const ov = document.createElement("div");
+    ov.className = "modal-overlay";
+    ov.innerHTML = `<div class="modal-card">
+       <h3>${esc(titulo)}</h3>
+       <p>${esc(String(texto)).replace(/\n/g, "<br>")}</p>
+       <div class="modal-acciones">
+         <button type="button" class="btn btn-ok" data-modal-si>Aceptar</button>
+         <button type="button" class="btn btn-mini" data-modal-no>Cancelar</button>
+       </div>
+     </div>`;
+    ov.querySelector("[data-modal-si]").onclick = () => { ov.remove(); resolver(true); };
+    ov.querySelector("[data-modal-no]").onclick = () => { ov.remove(); resolver(false); };
+    ov.addEventListener("click", (e) => { if (e.target === ov) { ov.remove(); resolver(false); } });
+    document.body.appendChild(ov);
+  });
+}
+
 // ---------- Combobox con busqueda ----------
 // comboHtml(id, idsSugerencia) crea: <input type="text" id="id"> + <div id="idsSugerencia">.
 // initCombo(id, opciones, onSelect) con opciones [{ valor, texto, extra }] permite escribir
@@ -385,7 +423,7 @@ async function panelAdminEstablecimientos() {
         dependencia: $("#est-dep").value, direccion: $("#est-dir").value,
       });
       panelAdminEstablecimientos();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
 }
 
@@ -417,7 +455,7 @@ async function panelAdminUsuarios() {
         clave: $("#usr-clave").value, establecimiento: $("#usr-est").value,
       });
       panelAdminUsuarios();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
 }
 
@@ -533,6 +571,12 @@ async function panelAdminActividades() {
        <button class="btn btn-primario2" id="btn-nuevo-act">+ Nueva</button>
        <button class="btn btn-mini" id="btn-seccion-act">+ Sección</button></div>
 
+     <div class="act-buscador">
+       <input id="buscador-acts" type="search" placeholder="Buscar actividad por nombre..." aria-label="Buscar actividad">
+       <span id="cont-acts" class="act-buscador-contador">0 actividades</span>
+     </div>
+     <p id="act-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron actividades con ese nombre.</p>
+
      <div id="form-nuevo-act" class="tarjeta oculta">
        <h3 id="act-form-titulo">Nueva actividad</h3>
        <div class="grid-2">
@@ -641,18 +685,54 @@ async function panelAdminActividades() {
       const lugar = prompt("Lugar (opcional):") || "Por definir";
       API.peticion("POST", `/api/actividades/${b.dataset.agregarEncuentro}/encuentros`, { fecha, hora, lugar })
         .then(() => { panelAdminActividades(); })
-        .catch((err) => alert(err.message));
+        .catch((err) => mostrarMensaje(err.message));
     };
   });
   document.querySelectorAll("[data-eliminar-act]").forEach((b) => {
     b.onclick = async () => {
-      if (!confirm("Seguro que desea eliminar esta actividad?")) return;
+      if (!await confirmarMensaje("Seguro que desea eliminar esta actividad?")) return;
       try {
         await API.eliminarActividad(b.dataset.eliminarAct);
         panelAdminActividades();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
+
+  const buscarAct = () => {
+    const q = ($("#buscador-acts").value || "").trim().toLowerCase();
+    let totalVisibles = 0;
+    document.querySelectorAll("#contenido .sec-tarjeta").forEach((sec) => {
+      let visibles = 0;
+      sec.querySelectorAll(".act-tarjeta").forEach((card) => {
+        const nombre = card.querySelector(".act-nombre-titulo")?.textContent || "";
+        const coincide = !q || nombre.toLowerCase().includes(q);
+        card.style.display = coincide ? "" : "none";
+        if (coincide) visibles++;
+      });
+      sec.style.display = visibles ? "" : "none";
+      if (visibles) totalVisibles += visibles;
+      if (q && visibles) {
+        const desg = sec.querySelector(".sec-desg");
+        if (desg) desg.classList.remove("oculta");
+        sec.querySelector(".sec-titulo")?.setAttribute("aria-expanded", "true");
+        sec.querySelectorAll(".act-tarjeta").forEach((card) => {
+          if (card.style.display !== "none") {
+            const d = card.querySelector(".act-desg");
+            if (d) d.classList.remove("oculta");
+            card.querySelector(".act-titulo")?.setAttribute("aria-expanded", "true");
+          }
+        });
+      } else if (!q) {
+        sec.querySelectorAll(".act-tarjeta").forEach((c) => { c.style.display = ""; });
+      }
+    });
+    const aviso = document.getElementById("act-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !(q && totalVisibles === 0));
+    const contador = document.getElementById("cont-acts");
+    if (contador) contador.textContent = totalVisibles + " actividad(es)";
+  };
+  $("#buscador-acts").addEventListener("input", buscarAct);
+  buscarAct();
 
   $("#btn-nuevo-act").onclick = () => { abrirFormActividad(null); };
   $("#btn-seccion-act").onclick = async () => {
@@ -662,7 +742,7 @@ async function panelAdminActividades() {
     try {
       await API.crearSeccion({ nombre, area });
       panelAdminActividades();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   $("#btn-cancelar-act").onclick = () => {
     __actEditando = null;
@@ -692,7 +772,7 @@ async function panelAdminActividades() {
       }
       __actEditando = null;
       panelAdminActividades();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
 }
 
@@ -721,6 +801,11 @@ async function panelAdminTorneos() {
   const opActCat = opcionesActividadCategoria(act);
   contenido(
     `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div>
+     <div class="act-buscador">
+       <input id="buscador-tors" type="search" placeholder="Buscar torneo por nombre..." aria-label="Buscar torneo">
+       <span id="cont-tors" class="act-buscador-contador">0 torneos</span>
+     </div>
+     <p id="tor-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron torneos con ese nombre.</p>
      <div id="form-nuevo-tor" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>Nombre</label><input id="tor-nombre"></div>
@@ -735,7 +820,7 @@ ${tor.map((t) => {
       pausado: "Pausado", postergado: "Postergado", suspendido: "Suspendido",
       cancelado: "Cancelado", finalizado: "Finalizado",
     };
-    return `<div class="tarjeta">
+    return `<div class="tarjeta tor-tarjeta" id="tor-tarjeta-${t._id}">
        <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "Sin categoria")}</span> <span class="badge-rol">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span> ${t.estado === "suspendido" ? `<span class="badge-estado-tor est-suspendido">Suspendido</span>` : `<span class="badge-rol">${esc(runLabel[t.estado] || t.estado)}</span>`}</h3>
        <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} | Llave unica</p>
        ${programacionTorneoResumen(t)}
@@ -762,8 +847,8 @@ ${tor.map((t) => {
   $("#btn-guardar-tor").onclick = async () => {
     try {
       const nombre = $("#tor-nombre").value.trim();
-      if (!nombre) { alert("Indique el nombre del torneo"); return; }
-      if (!$("#tor-act").value) { alert("Seleccione una actividad (categoria)"); return; }
+      if (!nombre) { mostrarMensaje("Indique el nombre del torneo"); return; }
+      if (!$("#tor-act").value) { mostrarMensaje("Seleccione una actividad (categoria)"); return; }
       await API.crearTorneo({
         nombre, actividad: $("#tor-act").value, division: $("#tor-div").value,
         anio: new Date().getFullYear(),
@@ -772,7 +857,7 @@ ${tor.map((t) => {
         formulario: {},
       });
       panelAdminTorneos();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   document.querySelectorAll("[data-equipos]").forEach((b) => {
     b.onclick = () => panelAdminEquipos(b.dataset.equipos);
@@ -781,7 +866,7 @@ ${tor.map((t) => {
     b.onclick = () => verPartidos(b.dataset.partidos, b.dataset.nombre || "Partidos", b.dataset.formato || "amistoso");
   });
   document.querySelectorAll("[data-llaves]").forEach((b) => {
-    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => alert(err.message));
+    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
   });
   // Suspender/Reactivar: reversible. Suspender impide nuevas inscripciones del
   // coordinador (el torneo queda fuera de su panel) hasta que se reactive.
@@ -793,12 +878,12 @@ ${tor.map((t) => {
       const msj = esSuspendido
         ? "Reactivar el torneo. Los coordinadores podran volver a inscribir estudiantes."
         : "Suspender el torneo. Los coordinadores no podran inscribir estudiantes hasta que se reactive.";
-      if (!confirm(`Esta seguro de ${accion} el torneo?\n\n${msj}`)) return;
+      if (!await confirmarMensaje(`Esta seguro de ${accion} el torneo?\n\n${msj}`)) return;
       try {
         if (esSuspendido) await API.reactivarTorneo(idT);
         else await API.suspenderTorneo(idT);
         panelAdminTorneos();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
   // Eliminacion definitiva: borra el torneo y todo lo que dependia de el
@@ -807,11 +892,11 @@ ${tor.map((t) => {
     b.onclick = async () => {
       const idT = b.dataset.eliminarTorneo;
       const nombre = b.dataset.nombre || "el torneo";
-      if (!confirm(`BORRADO DEFINITIVO de "${nombre}".\n\nSe eliminaran el torneo, sus equipos, posiciones, inscripciones y la referencia en los estudiantes. Esta accion NO se puede deshacer.\n\nContinuar?`)) return;
+      if (!await confirmarMensaje(`BORRADO DEFINITIVO de "${nombre}".\n\nSe eliminaran el torneo, sus equipos, posiciones, inscripciones y la referencia en los estudiantes. Esta accion NO se puede deshacer.\n\nContinuar?`)) return;
       try {
         await API.eliminarTorneo(idT);
         panelAdminTorneos();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
   document.querySelectorAll("[data-programar]").forEach((b) => {
@@ -834,7 +919,7 @@ ${tor.map((t) => {
     if (!btn) return;
     const cont = btn.closest(".form-programar");
     const torneoId = cont?.dataset.formProgramar;
-    if (!torneoId) { alert("Torneo invalido"); return; }
+    if (!torneoId) { mostrarMensaje("Torneo invalido"); return; }
     const combinarFechaHora = (fecha, hora, porDefecto) => {
       if (!fecha) return null;
       const partes = String(hora || "");
@@ -864,11 +949,11 @@ ${tor.map((t) => {
 
     // Validaciones antes de guardar: mensajes claros de error.
     if (fApertura && fCierre && new Date(fApertura) > new Date(fCierre)) {
-      alert("No se pudo guardar: la fecha de apertura no puede ser despues de la fecha de cierre.");
+      mostrarMensaje("No se pudo guardar: la fecha de apertura no puede ser despues de la fecha de cierre.");
       return;
     }
     if (edadMin != null && edadMax != null && Number(edadMin) > Number(edadMax)) {
-      alert("No se pudo guardar: la edad minima no puede ser mayor que la edad maxima.");
+      mostrarMensaje("No se pudo guardar: la edad minima no puede ser mayor que la edad maxima.");
       return;
     }
 
@@ -893,12 +978,30 @@ ${tor.map((t) => {
       panelAdminTorneos();
     } catch (err) {
       const detalle = (err && err.data && err.data.error) || err.message || "Error desconocido";
-      alert("No se pudo guardar la programacion: " + detalle);
+      mostrarMensaje("No se pudo guardar la programacion: " + detalle);
     }
   };
   torCont.addEventListener("click", onProgramarClick);
   torCont.addEventListener("change", onProgramarClick);
   window.__torneosProgramables = tor;
+
+  const buscarTor = () => {
+    const q = ($("#buscador-tors").value || "").trim().toLowerCase();
+    let total = 0;
+    tor.forEach((t) => {
+      const card = document.getElementById(`tor-tarjeta-${t._id}`);
+      if (!card) return;
+      const coincide = !q || t.nombre.toLowerCase().includes(q);
+      card.style.display = coincide ? "" : "none";
+      if (coincide) total++;
+    });
+    const aviso = document.getElementById("tor-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !(q && total === 0));
+    const contador = document.getElementById("cont-tors");
+    if (contador) contador.textContent = total + " torneo(s)";
+  };
+  $("#buscador-tors").addEventListener("input", buscarTor);
+  buscarTor();
 }
 
 // Rersumen de la programacion del torneo (fechas y requisitos).
@@ -1063,9 +1166,9 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
           horaTermino: document.querySelector(`[data-horario="${id}"].h-termino`)?.value,
           lugar: document.querySelector(`[data-horario="${id}"].h-lugar`)?.value,
         });
-        alert("Horario guardado");
+        mostrarMensaje("Horario guardado");
         verPartidos(torneoId, nombreTorneo);
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 
@@ -1139,12 +1242,12 @@ async function generarBracket() {
   }
   try {
     const res = await API.ejecutarBracket(torneoId, datos);
-    alert(`Eliminatorias generadas (${res.totalRondas} ronda${res.totalRondas > 1 ? "s" : ""})`);
+    mostrarMensaje(`Eliminatorias generadas (${res.totalRondas} ronda${res.totalRondas > 1 ? "s" : ""})`);
     document.getElementById("modal-bracket")?.classList.add("oculta");
     __torneoBracket = null;
     panelAdminEquipos(torneoId);
   } catch (err) {
-    alert(err.message);
+    mostrarMensaje(err.message);
   }
 }
 
@@ -1213,9 +1316,9 @@ async function panelAdminEquipos(torneoId) {
   $("#btn-ejecutar-sorteo-equipos").onclick = async () => {
     try {
       await API.ejecutarSorteo(torneoId);
-      alert("Sorteo ejecutado: fase de grupos + eliminatorias automaticas");
+      mostrarMensaje("Sorteo ejecutado: fase de grupos + eliminatorias automaticas");
       panelAdminEquipos(torneoId);
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   $("#btn-generar-bracket-equipos").onclick = () => abrirModalBracket(torneoId);
   $("#btn-generar-bracket")?.addEventListener("click", generarBracket);
@@ -1233,20 +1336,20 @@ async function panelAdminEquipos(torneoId) {
     try {
       await API.sortearEquipos(torneoId, Number($("#eq-cantidad").value));
       panelAdminEquipos(torneoId);
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   $("#btn-crear-equipo").onclick = async () => {
     const alumnos = Array.from(document.querySelectorAll("#eq-pool input:checked")).map((c) => c.value);
     try {
       await API.crearEquipo(torneoId, { nombre: $("#eq-nombre").value, alumnos });
       panelAdminEquipos(torneoId);
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   document.querySelectorAll("[data-elim-equipo]").forEach((b) => {
     b.onclick = async () => {
-      if (!confirm("¿Eliminar este equipo?")) return;
+      if (!await confirmarMensaje("¿Eliminar este equipo?")) return;
       try { await API.eliminarEquipo(torneoId, b.dataset.elimEquipo); panelAdminEquipos(torneoId); }
-      catch (err) { alert(err.message); }
+      catch (err) { mostrarMensaje(err.message); }
     };
   });
 }
@@ -1440,9 +1543,9 @@ function wcEnlazarAcciones(cont, torneoId, or) {
         const pa = cont.querySelector(`[data-in-llave="${id}"][data-lado="a"]`).value;
         const pb = cont.querySelector(`[data-in-llave="${id}"][data-lado="b"]`).value;
         await API.registrarResultadoLlave(id, { puntajeA: pa, puntajeB: pb });
-        alert("Resultado registrado");
+        mostrarMensaje("Resultado registrado");
         await refrescarMapa();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
   cont.querySelectorAll("[data-edit-llave]").forEach((bb) => {
@@ -1461,11 +1564,11 @@ function wcEnlazarAcciones(cont, torneoId, or) {
         const id = bb.dataset.guardarEdicion;
         const a = cont.querySelector(`[data-in-edit-llave="${id}"][data-lado="a"]`).value;
         const b = cont.querySelector(`[data-in-edit-llave="${id}"][data-lado="b"]`).value;
-        if (a === b) { alert("El equipo A y B no pueden ser el mismo"); return; }
+        if (a === b) { mostrarMensaje("El equipo A y B no pueden ser el mismo"); return; }
         await API.actualizarLlave(id, { equipos: [a, b] });
-        alert("Emparejamiento actualizado");
+        mostrarMensaje("Emparejamiento actualizado");
         await refrescarMapa();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 }
@@ -1665,8 +1768,13 @@ async function panelAdminInscripciones() {
        </div>
        <button class="btn btn-ok" id="btn-guardar-ins">Enviar</button>
      </div>
+     <div class="act-buscador">
+       <input id="buscador-ins" type="search" placeholder="Buscar por establecimiento, actividad o categoria..." aria-label="Buscar inscripcion">
+       <span id="cont-ins" class="act-buscador-contador">0 inscripciones</span>
+     </div>
+     <p id="ins-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron inscripciones.</p>
      <div class="tarjeta"><table><thead><tr><th>Establecimiento</th><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
-     <tbody>${ins.map((i) => `<tr>
+     <tbody>${ins.map((i) => `<tr data-busq="${esc((((i.establecimiento ? (i.establecimiento.nombre || i.establecimiento) : "") + " " + (i.actividad ? (i.actividad.nombre || i.actividad) : "") + " " + i.division + " " + i.estado)).toLowerCase())}">
        <td>${esc(i.establecimiento ? i.establecimiento.nombre : i.establecimiento)}</td>
        <td>${esc(i.actividad ? i.actividad.nombre : i.actividad)}</td>
        <td>${esc(i.division)}</td>
@@ -1687,14 +1795,29 @@ async function panelAdminInscripciones() {
       if ($("#ins-tor").value) { /* asociacion requiere endpoint aparte; se omite por simplicidad */ }
       void nuevo;
       panelAdminInscripciones();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   document.querySelectorAll("[data-acc]").forEach((b) => {
     b.onclick = async () => {
       try { await API.cambiarEstadoInscripcion(b.dataset.acc, b.dataset.est); panelAdminInscripciones(); }
-      catch (err) { alert(err.message); }
+      catch (err) { mostrarMensaje(err.message); }
     };
   });
+  const buscarIns = () => {
+    const q = ($("#buscador-ins").value || "").trim().toLowerCase();
+    let total = 0;
+    document.querySelectorAll("#contenido tbody tr").forEach((tr) => {
+      const coincide = !q || (tr.dataset.busq || "").includes(q);
+      tr.style.display = coincide ? "" : "none";
+      if (coincide) total++;
+    });
+    const aviso = document.getElementById("ins-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !(q && total === 0));
+    const contador = document.getElementById("cont-ins");
+    if (contador) contador.textContent = total + " inscripcion(es)";
+  };
+  $("#buscador-ins").addEventListener("input", buscarIns);
+  buscarIns();
 }
 
 async function panelAdminValoraciones() {
@@ -1723,7 +1846,7 @@ async function panelAdminValoraciones() {
         estado: $("#val-estado").value, anio: new Date().getFullYear(), semestre: 1,
       });
       panelAdminValoraciones();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
   const ranking = await API.ranking();
   $("#ranking").innerHTML = Object.entries(ranking).map(([nombre, filas]) =>
@@ -1749,7 +1872,7 @@ async function panelAdminSolicitudes() {
       try {
         await API.responderSolicitud(b.dataset.solAcc, b.dataset.solEst, "");
         panelAdminSolicitudes();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 }
@@ -1890,9 +2013,13 @@ async function panelAdminReportes() {
   ]);
   contenido(
     `<h2 class="pagina">Reportes y Estadisticas</h2>
-     <div class="tarjeta"><h3>Total de Beneficiarios</h3>
-       <div class="stat"><div class="num">${ben.total}</div><div class="lbl">Beneficiarios</div></div>
+     <div class="tarjeta"><h3>Total de Estudiantes Participantes</h3>
+       <div class="stat"><div class="num">${ben.total}</div><div class="lbl">Estudiantes participantes</div></div>
        ${(ben.semestres || []).map((s) => `<span class="stat"><div class="num">${s.total}</div><div class="lbl">Semestre ${s._id}</div></span>`).join("")}
+       <div class="stat"><div class="num">${(ben.porEstablecimiento || []).length}</div><div class="lbl">Establecimientos participantes</div></div>
+       <h4 style="margin:14px 0 8px">Estudiantes por establecimiento</h4>
+       <table><thead><tr><th>Codigo</th><th>Establecimiento</th><th>Estudiantes</th></tr></thead>
+       <tbody>${(ben.porEstablecimiento || []).map((e) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.nombre)}</td><td>${e.total}</td></tr>`).join("")}</tbody></table>
      </div>
      <div class="tarjeta"><h3>Participaciones por Establecimiento</h3>
        <table><thead><tr><th>Codigo</th><th>Establecimiento</th><th>Total</th><th>Aceptadas</th></tr></thead>
@@ -1949,7 +2076,7 @@ async function panelCoordResumen() {
   );
   $("#btn-vercat").onclick = () => cargarCarteleraEn("#cartelera");
   $("#btn-ir-torneos").onclick = () => navegar("coordTorneos");
-  $("#btn-marcar-notifs").onclick = async () => { try { await API.marcarTodasNotificacionesLeidas(); panelCoordResumen(); } catch (err) { alert(err.message); } };
+  $("#btn-marcar-notifs").onclick = async () => { try { await API.marcarTodasNotificacionesLeidas(); panelCoordResumen(); } catch (err) { mostrarMensaje(err.message); } };
   document.querySelectorAll("[data-leer-notif]").forEach((f) => {
     f.onclick = async () => {
       try {
@@ -1957,7 +2084,7 @@ async function panelCoordResumen() {
         await API.marcarNotificacionLeida(f.dataset.leerNotif);
         refrescarCampana();
         navegar("coordTorneos");
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 }
@@ -2055,15 +2182,15 @@ async function cargarCarteleraEn(sel) {
     const ape = document.querySelector(`[data-pp-ape="${id}"]`).value.trim();
     const gen = document.querySelector(`[data-pp-gen="${id}"]`).value;
     const fec = document.querySelector(`[data-pp-fec="${id}"]`).value;
-    if (!division) { alert("Seleccione la categoria primero"); return; }
-    if (!rut || !nom || !fec) { alert("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
+    if (!division) { mostrarMensaje("Seleccione la categoria primero"); return; }
+    if (!rut || !nom || !fec) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
     try {
       await API.peticion("POST", "/api/inscripciones/postular", {
         actividad: id,
         division,
         alumno: { rut, nombre: `${nom} ${ape}`.trim(), genero: gen, fechaNacimiento: fec },
       });
-      alert("Postulante agregado a la nomina");
+      mostrarMensaje("Postulante agregado a la nomina");
       nomina = await API.nomina().catch(() => nomina);
       document.querySelector(`[data-pp-rut="${id}"]`).value = "";
       document.querySelector(`[data-pp-nom="${id}"]`).value = "";
@@ -2072,7 +2199,7 @@ async function cargarCarteleraEn(sel) {
       document.querySelector(`[data-pp-edad="${id}"]`).value = "";
       const contPart = $(`#part-${id}`);
       if (contPart && !contPart.classList.contains("oculta")) renderPart(id);
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   });
 
   // Torneos programados (admin definio fechas/requisitos) visibles para inscribirse.
@@ -2122,7 +2249,7 @@ async function panelCoordLectores() {
         clave: $("#enc-clave").value, establecimiento: API.usuario.establecimiento._id,
       });
       panelCoordLectores();
-    } catch (err) { alert(err.message); }
+    } catch (err) { mostrarMensaje(err.message); }
   };
 }
 
@@ -2156,7 +2283,7 @@ async function panelCoordInscribir() {
   );
   cargarCarteleraEn("#cartelera-c");
   document.querySelectorAll("[data-retract]").forEach((b) => {
-    b.onclick = async () => { try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); panelCoordInscribir(); } catch (err) { alert(err.message); } };
+    b.onclick = async () => { try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); panelCoordInscribir(); } catch (err) { mostrarMensaje(err.message); } };
   });
   initCombo("asoc-tor-txt", opAsocTor, (o) => { $("#asoc-tor").value = o.valor; }, "Buscar torneo...");
   const selAsocIns = $("#asoc-ins");
@@ -2166,9 +2293,9 @@ async function panelCoordInscribir() {
     $("#btn-asoc-tor").onclick = async () => {
       try {
         const res = await API.asociarTorneo(selAsocIns.value, $("#asoc-tor").value);
-        alert("Inscripcion asociada al torneo\n" + (res.inscripcion && res.inscripcion.torneo || ""));
+        mostrarMensaje("Inscripcion asociada al torneo\n" + (res.inscripcion && res.inscripcion.torneo || ""));
         panelCoordInscribir();
-      } catch (err) { alert(err.message); }
+      } catch (err) { mostrarMensaje(err.message); }
     };
   }
 }
@@ -2278,11 +2405,11 @@ async function panelCoordTorneos() {
       const id = b.dataset.postNom;
       const sel = document.querySelector(`[data-tor-nom="${id}"]`);
       const alumnoId = sel && sel.value;
-      if (!alumnoId) { alert("Seleccione un estudiante de la nomina"); return; }
+      if (!alumnoId) { mostrarMensaje("Seleccione un estudiante de la nomina"); return; }
       try {
         const r = await API.postularTorneo(id, { alumnoId });
-        alert(r.mensaje); refrescar();
-      } catch (err) { alert(err.message); }
+        mostrarMensaje(r.mensaje); refrescar();
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 
@@ -2290,11 +2417,11 @@ async function panelCoordTorneos() {
     b.onclick = async () => {
       const id = b.dataset.postNuevo;
       const n = obtenerNuevo(id);
-      if (!n.rut || !n.nombre || !n.fechaNacimiento) { alert("Complete RUT, Nombres y Fecha de nacimiento"); return; }
+      if (!n.rut || !n.nombre || !n.fechaNacimiento) { mostrarMensaje("Complete RUT, Nombres y Fecha de nacimiento"); return; }
       try {
         const r = await API.postularTorneo(id, { alumno: { rut: n.rut, nombre: `${n.nombre} ${n.apellidos}`.trim(), genero: n.genero, fechaNacimiento: n.fechaNacimiento } });
-        alert(r.mensaje); refrescar();
-      } catch (err) { alert(err.message); }
+        mostrarMensaje(r.mensaje); refrescar();
+      } catch (err) { mostrarMensaje(err.message); }
     };
   });
 }
@@ -2330,8 +2457,8 @@ async function panelCoordSolicitudesImpl() {
       await API.agregarAlumno($("#al-ins").value, {
         rut: $("#al-rut").value, nombre: $("#al-nombre").value, fechaNacimiento: $("#al-fecha").value, genero: $("#al-genero").value,
       });
-      alert("Estudiante agregado (la categoria valida el anio de nacimiento)"); panelCoordSolicitudes();
-    } catch (err) { alert(err.message); }
+      mostrarMensaje("Estudiante agregado (la categoria valida el anio de nacimiento)"); panelCoordSolicitudes();
+    } catch (err) { mostrarMensaje(err.message); }
   };
 }
 
