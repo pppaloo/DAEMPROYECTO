@@ -27,8 +27,14 @@ class EquipoController {
 
   async sortear(req, res) {
     try {
-      const equipos = await this.#service.sortear(req.params.id, req.body || {});
-      res.json({ mensaje: "Equipos sorteado correctamente", equipos });
+      const resultado = await this.#service.sortear(req.params.id, req.body || {});
+      res.json({
+        mensaje: `Equipos sorteado correctamente (${resultado.totalEquipos} equipos de ${resultado.porEquipo} jugadores${resultado.sobrantes ? `, ${resultado.sobrantes} sin equipo` : ""})`,
+        equipos: resultado.equipos,
+        totalEquipos: resultado.totalEquipos,
+        porEquipo: resultado.porEquipo,
+        sobrantes: resultado.sobrantes,
+      });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }
@@ -48,6 +54,15 @@ class EquipoController {
       const eliminado = await this.#service.eliminar(req.params.id, req.params.equipoId);
       if (!eliminado) return res.status(404).json({ error: "Equipo no encontrado" });
       res.json({ mensaje: "Equipo eliminado" });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async actualizar(req, res) {
+    try {
+      const equipo = await this.#service.actualizar(req.params.id, req.params.equipoId, req.body || {});
+      res.json({ mensaje: "Equipo actualizado", equipo });
     } catch (error) {
       res.status(400).json({ error: error.message });
     }

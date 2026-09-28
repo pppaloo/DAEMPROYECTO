@@ -53,11 +53,32 @@ const NOMBRES_F = [
   "Javiera", "Camila", "Valentina", "Ignacia", "Renata", "Colomba",
   "Magdalena", "Rocio", "Daniela", "Francisca",
 ];
+// Segundo nombre y apellido materno: los nombres de la nomina quedan en 4
+// componentes (primer, segundo nombre, apellido paterno y materno) para
+// distinguir estudiantes con mismo primer nombre y apellido.
+const SEGUNDOS_NOMBRES_M = [
+  "Andres", "Ignacio", "Esteban", "Alejandro", "Felipe", "Gabriel", "Jose",
+  "Antonio", "Sebastian", "Cristian", "Patricio", "Mauricio", "Ricardo",
+  "Alberto", "Daniel", "Eduardo", "Manuel", "Oscar", "Juan", "Pedro",
+  "Pablo", "Rene", "Claudio", "Leonardo",
+];
+const SEGUNDOS_NOMBRES_F = [
+  "Alicia", "Andrea", "Beatriz", "Carolina", "Daniela", "Elena", "Francisca",
+  "Gabriela", "Ignacia", "Isabel", "Javiera", "Josefa", "Katherine", "Lorena",
+  "Macarena", "Marcela", "Natalia", "Nicole", "Pamela", "Paola",
+  "Paulina", "Raquel", "Sandra", "Teresa",
+];
 const APELLIDOS = [
   "Gonzalez", "Munoz", "Rojas", "Diaz", "Perez", "Soto", "Contreras", "Silva",
   "Martinez", "Sepulveda", "Morales", "Rodriguez", "Lopez", "Fuentes",
   "Hernandez", "Torres", "Araya", "Flores", "Espinoza", "Valenzuela",
   "Castillo", "Ramirez", "Reyes", "Cortes",
+];
+const APELLIDOS_MATERNOS = [
+  "Acuna", "Aguilar", "Alvarez", "Barrera", "Bravo", "Carrasco", "Castro",
+  "Cruz", "Donoso", "Figueroa", "Garrido", "Guzman", "Herrera", "Jara",
+  "Lara", "Lagos", "Miranda", "Navarro", "Ortega", "Paredes",
+  "Quinteros", "Riquelme", "Sandoval", "Vega",
 ];
 
 // Cupos (actividad + division) donde se reparte la nomina de cada colegio.
@@ -397,16 +418,18 @@ async function ejecutarSeed() {
   const existentes = actRepo.obtenerTodos({ anio });
   const JDM_SIN_SUFFIX = ACTIVIDADES_JDM.concat(ACTIVIDADES_JDM_JUVENIL);
   const JDE_SIN_SUFFIX = ACTIVIDADES_JDE.concat(ACTIVIDADES_JDE_JUVENIL);
-  const deClave = (lista, prefijo) => {
+  const deClave = (lista, prefijo, seccionId) => {
     for (const nombre of lista) {
-      const doc = existentes.find((a) => a.nombre === nombre && a.area === "Deportiva");
+      const doc = seccionId
+        ? existentes.find((a) => a.nombre === nombre && a.area === "Deportiva" && a.seccion === seccionId)
+        : existentes.find((a) => a.nombre === nombre && a.area === "Deportiva");
       if (doc) {
         if (!idsActividades[`${prefijo}_${nombre}`]) idsActividades[`${prefijo}_${nombre}`] = doc.id;
       }
     }
   };
-  deClave(JDM_SIN_SUFFIX, "JDM");
-  deClave(JDE_SIN_SUFFIX, "JDE");
+  deClave(JDM_SIN_SUFFIX, "JDM", idsSecciones.JDM);
+  deClave(JDE_SIN_SUFFIX, "JDE", idsSecciones.JDE);
   for (const nombre of ACTIVIDADES_MINI) {
     const doc = existentes.find((a) => a.nombre === nombre);
     if (doc && !idsActividades[`JDM_${nombre}`]) idsActividades[`JDM_${nombre}`] = doc.id;
@@ -470,14 +493,14 @@ async function ejecutarSeed() {
     // Alumnos de ejemplo en la inscripcion aceptada (validan categoria SUB 13).
     agregarAlumnoAInscripcion(inscA.id, {
       rut: "12121212-9",
-      nombre: "Mateo Aguilera",
+      nombre: "Mateo Andres Aguilera Fuentes",
       genero: "M",
       fechaNacimiento: "2014-05-10",
       apoderado: "Luis Aguilera",
     });
     agregarAlumnoAInscripcion(inscA.id, {
       rut: "13131313-6",
-      nombre: "Ignacia Rojas",
+      nombre: "Ignacia Fernanda Rojas Soto",
       genero: "F",
       fechaNacimiento: "2013-02-14",
       apoderado: "Paula Rojas",
@@ -487,14 +510,14 @@ async function ejecutarSeed() {
     // estudiantes permite formar equipos mixtos (sorteo automatico).
     agregarAlumnoAInscripcion(inscB.id, {
       rut: "17171717-5",
-      nombre: "Fernando Silva",
+      nombre: "Fernando Ignacio Silva Navarro",
       genero: "M",
       fechaNacimiento: "2014-11-03",
       apoderado: "Rosa Silva",
     });
     agregarAlumnoAInscripcion(inscB.id, {
       rut: "18181818-2",
-      nombre: "Camila Nunez",
+      nombre: "Camila Valentina Nunez Paredes",
       genero: "F",
       fechaNacimiento: "2013-06-21",
       apoderado: "Diego Nunez",
@@ -509,7 +532,7 @@ async function ejecutarSeed() {
     inscRepo.cambiarEstado(inscB2.id, "aceptada");
     agregarAlumnoAInscripcion(inscB2.id, {
       rut: "20202020-8",
-      nombre: "Mateo Paredes",
+      nombre: "Mateo Ignacio Paredes Vega",
       genero: "M",
       fechaNacimiento: "2014-04-12",
       apoderado: "Andrea Paredes",
@@ -524,7 +547,7 @@ async function ejecutarSeed() {
     inscRepo.cambiarEstado(inscC.id, "aceptada");
     agregarAlumnoAInscripcion(inscC.id, {
       rut: "23232323-K",
-      nombre: "Diego Fuentes",
+      nombre: "Diego Alejandro Fuentes Herrera",
       genero: "M",
       fechaNacimiento: "2013-09-19",
       apoderado: "Sara Fuentes",
@@ -563,14 +586,14 @@ async function ejecutarSeed() {
     inscRepo.cambiarEstado(inscAjeA.id, "aceptada");
     agregarAlumnoAInscripcion(inscAjeA.id, {
       rut: "14141414-3",
-      nombre: "Emma Soto",
+      nombre: "Emma Paz Soto Carrasco",
       genero: "F",
       fechaNacimiento: "2015-03-22",
       apoderado: "Claudia Soto",
     });
     agregarAlumnoAInscripcion(inscAjeA.id, {
       rut: "15151515-0",
-      nombre: "Benjamin Cruz",
+      nombre: "Benjamin Andres Cruz Miranda",
       genero: "M",
       fechaNacimiento: "2014-07-08",
       apoderado: "Rosa Cruz",
@@ -584,7 +607,7 @@ async function ejecutarSeed() {
     inscRepo.cambiarEstado(inscAjeB.id, "aceptada");
     agregarAlumnoAInscripcion(inscAjeB.id, {
       rut: "16161616-8",
-      nombre: "Valentina Pino",
+      nombre: "Valentina Renata Pino Acuna",
       genero: "F",
       fechaNacimiento: "2015-09-30",
       apoderado: "Jorge Pino",
@@ -618,11 +641,14 @@ async function ejecutarSeed() {
       slot += 1;
       const actId = idsActividades[cupo.act];
       if (!actId) continue;
+      const actividad = actRepo.obtenerPorId(actId);
+      if (!actividad || !(actividad.divisiones || []).includes(cupo.division)) continue;
       try {
         const inscId = obtenerOCrearInscripcionAceptada(estId, actId, cupo.division);
         const esM = total % 2 === 0;
         const nombres = esM ? NOMBRES_M : NOMBRES_F;
-        const nombre = `${nombres[(total + slot) % nombres.length]} ${APELLIDOS[(total * 3 + slot) % APELLIDOS.length]}`;
+        const segundos = esM ? SEGUNDOS_NOMBRES_M : SEGUNDOS_NOMBRES_F;
+        const nombre = `${nombres[(total + slot) % nombres.length]} ${segundos[(total * 2 + slot) % segundos.length]} ${APELLIDOS[(total * 3 + slot) % APELLIDOS.length]} ${APELLIDOS_MATERNOS[(total * 5 + slot) % APELLIDOS_MATERNOS.length]}`;
         const anioNacimiento = anioNacimientoDe(cupo.division, total + slot);
         const mes = String(((total * 5 + slot) % 12) + 1).padStart(2, "0");
         const dia = String(((total * 7 + slot) % 27) + 1).padStart(2, "0");

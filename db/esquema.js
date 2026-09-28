@@ -280,10 +280,11 @@ const CREAR_TABLAS = [
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     destinatario INTEGER DEFAULT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
     tipo TEXT NOT NULL DEFAULT 'general'
-      CHECK (tipo IN ('requisitos','apertura','suspension','reactivacion','eliminacion','general')),
+      CHECK (tipo IN ('requisitos','apertura','suspension','reactivacion','eliminacion','finalizacion','general')),
     torneo INTEGER DEFAULT NULL REFERENCES torneos (id) ON DELETE CASCADE,
     mensaje TEXT NOT NULL,
     leida INTEGER NOT NULL DEFAULT 0 CHECK (leida IN (0,1)),
+    descartada INTEGER NOT NULL DEFAULT 0 CHECK (descartada IN (0,1)),
     refNombre TEXT NOT NULL DEFAULT '',
     fechaCreacion TEXT NOT NULL DEFAULT (datetime('now')),
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
@@ -292,6 +293,48 @@ const CREAR_TABLAS = [
   `CREATE INDEX IF NOT EXISTS idx_notificaciones_destinatario ON notificaciones (destinatario)`,
 ];
 
+// Migraciones ligeras: CREATE TABLE IF NOT EXISTS no agrega columnas a tablas
+// que ya existen en la BD, asi que se verifican y completan al iniciar.
+function aplicarMigraciones(bd) {
+  const agregarSiFalta = (tabla, columna, ddl) => {
+    const existe = bd.prepare(`PRAGMA table_info(${tabla})`).all().some((c) => c.name === columna);
+    if (!existe) bd.exec(`ALTER TABLE ${tabla} ADD COLUMN ${ddl}`);
+  };
+  // Notificaciones descartables con "X" (no se muestran en el panel/campana).
+  agregarSiFalta("notificaciones", "descartada", "descartada INTEGER NOT NULL DEFAULT 0 CHECK (descartada IN (0,1))");
+  // El tipo 'finalizacion' se agrego al CHECK de notificaciones.tipo. SQLite
+  // no puede alterar un CHECK, asi que hay que recrear la tabla conservando
+  // las filas.
+  const sqlActual = bd
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'notificaciones'`)
+    .get();
+  if (sqlActual && sqlActual.sql && !sqlActual.sql.includes("'finalizacion'")) {
+    bd.exec(`PRAGMA foreign_keys = OFF`);
+    bd.exec(`CREATE TABLE notificaciones__nueva (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      destinatario INTEGER DEFAULT NULL REFERENCES usuarios (id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL DEFAULT 'general'
+        CHECK (tipo IN ('requisitos','apertura','suspension','reactivacion','eliminacion','finalizacion','general')),
+      torneo INTEGER DEFAULT NULL REFERENCES torneos (id) ON DELETE CASCADE,
+      mensaje TEXT NOT NULL,
+      leida INTEGER NOT NULL DEFAULT 0 CHECK (leida IN (0,1)),
+      descartada INTEGER NOT NULL DEFAULT 0 CHECK (descartada IN (0,1)),
+      refNombre TEXT NOT NULL DEFAULT '',
+      fechaCreacion TEXT NOT NULL DEFAULT (datetime('now')),
+      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    bd.exec(`INSERT INTO notificaciones__nueva
+      (id, destinatario, tipo, torneo, mensaje, leida, descartada, refNombre, fechaCreacion, createdAt, updatedAt)
+      SELECT id, destinatario, tipo, torneo, mensaje, leida, descartada, refNombre, fechaCreacion, createdAt, updatedAt
+      FROM notificaciones`);
+    bd.exec(`DROP TABLE notificaciones`);
+    bd.exec(`ALTER TABLE notificaciones__nueva RENAME TO notificaciones`);
+    bd.exec(`CREATE INDEX IF NOT EXISTS idx_notificaciones_destinatario ON notificaciones (destinatario)`);
+    bd.exec(`PRAGMA foreign_keys = ON`);
+  }
+}
+
 function crearEsquema() {
   const bd = obtenerConexion();
   bd.exec("BEGIN");
@@ -299,6 +342,7 @@ function crearEsquema() {
     for (const ddl of CREAR_TABLAS) {
       bd.exec(tabla(ddl));
     }
+    aplicarMigraciones(bd);
     bd.exec("COMMIT");
   } catch (err) {
     bd.exec("ROLLBACK");

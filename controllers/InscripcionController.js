@@ -116,6 +116,27 @@ class InscripcionController {
     }
   }
 
+  // Vista de participacion: por inscripcion, el torneo que corresponde y
+  // que alumnos estan marcados.
+  async participacion(req, res) {
+    try {
+      const datos = this.#service.participacionPorInscripcion(req.usuario);
+      res.json({ total: datos.length, datos });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+
+  // Marca o desmarca un alumno como participante del torneo correspondiente.
+  async marcarParticipacion(req, res) {
+    try {
+      const r = this.#service.marcarParticipacion(req.params.id, req.body || {}, req.usuario);
+      res.json(r);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   // Coordinador postula un estudiante (de la nomina o nuevo) a un torneo.
   async postularTorneo(req, res) {
     try {

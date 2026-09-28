@@ -140,6 +140,59 @@ En `.env`:
 - `DB_MODO=mongodb-memory` -> MongoDB embebido (pruebas).
 - Dejar vacio y definir `MONGO_URI` -> MongoDB Atlas o local.
 
+## Normalizacion de la base de datos
+
+El diseno relacional nace de un modelo inicial (MER / MongoDB) cuyas tablas guardaban
+**arreglos anidados**. El esquema SQL (`db/esquema.js`) descompone esos grupos repetidos
+hasta cumplir la **3FN**, creando tablas hijas y tablas puente para las relaciones N:M.
+
+### 1FN (eliminar grupos repetidos)
+
+| Grupo repetido original | Tabla normalizada | Relacion |
+|---|---|---|
+| Actividad.encuentros[] | `encuentros` | 1 actividad -> N encuentros |
+| Usuario.actividades[] | `usuario_actividades` | N usuarios <-> M actividades |
+| Alumno.torneos[] | `alumno_torneos` | N alumnos <-> M torneos |
+| Alumno.asistencia[] | `asistencias` | 1 alumno + 1 encuentro -> 1 registro |
+| Inscripcion.alumnos[] | `inscripcion_alumnos` | N inscripciones <-> M alumnos |
+| Equipo.alumnos[] | `equipo_alumnos` | N equipos <-> M alumnos |
+| Llave.equipos[] | `llave_equipos` | N llaves <-> M equipos |
+| Llave.hijos[] | `llave_hijos` | N llaves <-> M llaves (arbol del bracket) |
+| Subdocumentos posiciones/valoraciones/solicitudes/notificaciones | tablas propias | cada una con FK a su entidad padre |
+
+> Excepcion justificada: los campos de catalogo abierto (`categorias`, `divisiones`,
+> `recintos`, `grupos`, `formulario`, `requisitos`) se conservan como JSON porque son
+> listas de texto/opciones no relacionales (subcategorias, nombres de recintos, etc.).
+
+### 2FN (eliminar dependencias parciales)
+
+Las tablas puente usan **claves primarias compuestas**, que dependen de la combinacion
+completa de ambas FKs:
+
+- `PRIMARY KEY (usuario, actividad)`
+- `PRIMARY KEY (alumno, torneo)`
+- `PRIMARY KEY (inscripcion, alumno)`
+- `PRIMARY KEY (equipo, alumno)`
+- `PRIMARY KEY (llave, equipo)`
+- `PRIMARY KEY (llave, hijo)`
+- `UNIQUE (establecimiento, actividad, division)` en `inscripciones`
+- `UNIQUE (torneo, establecimiento, posicion)` en `posiciones`
+- `UNIQUE (establecimiento, actividad, anio, semestre)` en `valoraciones`
+- `UNIQUE (alumno, encuentro)` en `asistencias`
+
+Ninguna columna no clave depende de una parte de la clave compuesta; por eso se cumple 2FN.
+
+### 3FN (eliminar dependencias transitivas)
+
+Todo atributo no clave depende **solo de la clave primaria** de su tabla (y de la FK que
+expresa la relacion), sin atributos derivados de otros:
+
+- El periodo (anio/semestre) se modela como columnas de `torneos` / `valoraciones`, no como tabla aparte.
+- `estadoPrevio` del torneo guarda solo el estado anterior (para reactivar), no otro dato funcional.
+- Cada tabla guarda `createdAt`/`updatedAt` propios (auditoria), sin duplicar datos del padre.
+
+Resultado: **sin grupos repetidos, sin dependencias parciales, sin dependencias transitivas** -> 3FN.
+
 ## Instalacion y ejecucion
 
 ```bash

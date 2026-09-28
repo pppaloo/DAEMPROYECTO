@@ -460,7 +460,53 @@ class TorneoService {
     });
     // El ganador avanza a la siguiente ronda del bracket.
     await this.#avanzar(ganadorId, doc.padre || null);
+    // Si se registro el resultado de la FINAL (ronda mas alta del torneo)
+    // y hubo ganador, el torneo queda finalizado automaticamente.
+    if (ganadorId) {
+      await this.#finalizarSiEsLaFinal(doc).catch(() => {});
+    }
     return doc;
+  }
+
+  // Detecta si la llave correspondia a la final del torneo (la ronda de
+  // mayor nivel del bracket) y, de ser asi, marca el torneo como finalizado.
+  async #finalizarSiEsLaFinal(llave) {
+    const torneoId = llave.torneo && (llave.torneo._id || llave.torneo);
+    if (!torneoId) return;
+    const todas = await this.#llaves.obtenerTodos({ torneo: torneoId });
+    const elim = todas.filter((l) => l.nivel >= 1);
+    if (!elim.length) return;
+    const maxNivel = Math.max(...elim.map((l) => l.nivel));
+    if (Number(llave.nivel) !== Number(maxNivel)) return;
+    const torneo = await this.#torneos.obtenerPorId(torneoId);
+    if (!torneo || torneo.estado === "finalizado") return;
+    // Nombre del equipo campeon, para el aviso a los coordinadores. El repo
+    // de equipos es sincrono, asi que va con try/catch y nunca debe impedir
+    // la finalizacion.
+    let campeon = "";
+    try {
+      const ganadorId = llave.ganador && (llave.ganador._id || llave.ganador);
+      const equipo = ganadorId ? this.#equipos.obtenerPorId(ganadorId) : null;
+      if (equipo && equipo.nombre) campeon = ` Campeon: ${equipo.nombre}.`;
+    } catch (_) {
+      campeon = "";
+    }
+    await this.#finalizarTorneo(torneoId, torneo.nombre, `La final se disputo y ya existe un campeon.${campeon}`);
+  }
+
+  // Marca el torneo como finalizado y avisa a los coordinadores. El estado
+  // "finalizado" es irreversible en la UI, asi que el aviso se manda una sola vez.
+  async #finalizarTorneo(torneoId, nombre, detalle) {
+    const torneo = await this.#torneos.actualizar(torneoId, { estado: "finalizado" });
+    await this.#notificaciones
+      .crearParaCoordinadores({
+        tipo: "finalizacion",
+        torneoId,
+        refNombre: nombre || "",
+        mensaje: `El torneo "${nombre}" finalizo. ${detalle}`.trim(),
+      })
+      .catch(() => {});
+    return torneo;
   }
 
   // Posiciones finales (1º, 2º, 3º) del torneo.
@@ -475,8 +521,12 @@ class TorneoService {
     }));
 
     await this.#posiciones.reemplazarPorTorneo(torneoId, aInsertar);
-    await this.#torneos.actualizar(torneoId, { estado: "finalizado" });
-    return this.#posiciones.obtenerPorTorneo(torneoId);
+    // Si ya estaba finalizado no se repite el aviso (p. ej. se corrigen
+    // posiciones de un torneo que cerro por la final).
+    if (existente.estado === "finalizado") {
+      return this.#posiciones.obtenerPorTorneo(torneoId);
+    }
+    await this.#finalizarTorneo(torneoId, existente.nombre, "Se registraron las posiciones finales del torneo.");
   }
 
   async obtenerPosiciones(torneoId) {

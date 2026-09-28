@@ -181,11 +181,11 @@ function mostrarDashboard() {
   $("#btn-cerrar-menu").onclick = cerrarMenu;
   $("#overlay-menu").onclick = cerrarMenu;
 
-  const esCoord = u && u.rol === "coordinador";
+  const conNotis = u && (u.rol === "coordinador" || u.rol === "admin");
   const camp = $("#btn-campana-side");
   if (camp) {
-    camp.classList.toggle("oculta", !esCoord);
-    camp.onclick = () => navegar("coordResumen");
+    camp.classList.toggle("oculta", !conNotis);
+    camp.onclick = () => navegar("notificaciones");
   }
   refrescarCampana();
 }
@@ -197,7 +197,7 @@ async function refrescarCampana() {
   const badge = camp.querySelector(".badge-campana");
   try {
     const r = await API.notificaciones();
-    const n = (r && r.noLeidas) || 0;
+    const n = (r && r.pendientes) || 0;
     badge.textContent = n;
     badge.classList.toggle("oculta", n === 0);
   } catch (e) {
@@ -293,6 +293,7 @@ const PANELES = {
   coordTorneos: () => CargarPanel(panelCoordTorneos),
   coordSolicitudes: () => CargarPanel(panelCoordSolicitudes),
   coordNomina: () => CargarPanel(panelCoordNomina),
+  notificaciones: () => CargarPanel(panelNotificaciones),
   lectorResumen: () => CargarPanel(panelLectorResumen),
   lectorEstudiantes: () => CargarPanel(panelLectorEstudiantes),
   lectorAgenda: () => CargarPanel(panelAdminAgenda),
@@ -309,13 +310,120 @@ async function panelBienvenida() {
 // ============================================================
 // PANELES ADMIN
 // ============================================================
+// ============================================================
+// Notificaciones: bloque reutilizable (coordinador y admin).
+// ============================================================
+const ICONO_NOTIF = { suspension: "&#128683;", reactivacion: "&#9989;", eliminacion: "&#128465;", requisitos: "&#128203;", finalizacion: "&#127942;" };
+const TITULO_NOTIF = { suspension: "Torneo suspendido", reactivacion: "Torneo reactivado", eliminacion: "Torneo eliminado", requisitos: "Requisitos actualizados", finalizacion: "Torneo finalizado" };
+
+// No existe el estado "leida": toda notificacion visible usa el color de
+// pendiente. Lo unico que se puede hacer es quitarla del dashboard.
+function notifTarjetaHtml(n) {
+  const descartada = !!n.descartada;
+  return `<div class="notif-tarjeta ${descartada ? "notif-descartada" : "notif-no-leida"}">
+            <div class="notif-icono">${ICONO_NOTIF[n.tipo] || "&#128276;"}</div>
+            <div class="notif-cuerpo">
+              <div class="notif-titulo">${esc(TITULO_NOTIF[n.tipo] || "Notificacion")}</div>
+              <div class="notif-msg">${esc(n.mensaje)}</div>
+              <div class="notif-fecha muted">${new Date(n.fechaCreacion).toLocaleString("es-CL")}</div>
+            </div>
+            ${descartada
+              ? `<button class="notif-restaurar" data-restaurar-notif="${n._id}" title="Devolver al dashboard">Restaurar</button>`
+              : `<button class="notif-x" data-descartar-notif="${n._id}" title="Quitar del dashboard" aria-label="Quitar notificacion">&#10005;</button>`}
+          </div>`;
+}
+
+function notifsHtml(lista) {
+  if (!lista.length) return `<p class="muted">Sin notificaciones por ahora.</p>`;
+  return lista.map(notifTarjetaHtml).join("");
+}
+
+// Enlaza la X, "Restaurar" y los botones de masa. `alRefrescar` se ejecuta al
+// terminar para recargar el panel que contiene el bloque.
+function notifsEnlazar(alRefrescar) {
+  const recargar = async () => { await refrescarCampana(); alRefrescar(); };
+  document.querySelectorAll("[data-descartar-notif]").forEach((b) => {
+    b.onclick = async (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      try { await API.descartarNotificacion(b.dataset.descartarNotif); await recargar(); }
+      catch (err) { mostrarMensaje(err.message); }
+    };
+  });
+  document.querySelectorAll("[data-restaurar-notif]").forEach((b) => {
+    b.onclick = async (ev) => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      try { await API.restaurarNotificacion(b.dataset.restaurarNotif); await recargar(); }
+      catch (err) { mostrarMensaje(err.message); }
+    };
+  });
+  const masa = [
+    ["btn-descartar-notifs", () => API.descartarTodasNotificaciones()],
+    ["btn-restaurar-notifs", () => API.restaurarTodasNotificaciones()],
+  ];
+  masa.forEach(([id, fn]) => {
+    const b = document.getElementById(id);
+    if (b) b.onclick = async () => {
+      try { await fn(); await recargar(); } catch (err) { mostrarMensaje(err.message); }
+    };
+  });
+}
+
+// Bloque del dashboard: todas las notificaciones pendientes, con la X.
+// No se limita la cantidad: se muestran todas.
+function bloqueNotificacionesHtml(lista, pendientes) {
+  const enBandeja = lista.filter((n) => !n.descartada);
+  return `<div class="seccion notif-resumen">
+        <h3>Notificaciones <span class="badge-rol">${pendientes}</span></h3>
+        <div class="seccion">
+          <button class="btn btn-notif" id="btn-descartar-notifs">Quitar todas</button>
+          <button class="btn btn-notif" id="btn-ver-historial-notifs">Ver historial</button>
+        </div>
+        <div id="lista-notifs">${notifsHtml(enBandeja)}</div>
+      </div>`;
+}
+
+// ============================================================
+// Panel de notificaciones: historial completo (bitacora).
+// ============================================================
+async function panelNotificaciones() {
+  const r = await API.notificaciones();
+  const todas = r.notificaciones || [];
+  const descartadas = todas.filter((n) => n.descartada).length;
+
+  contenido(
+    `<div class="encabezado">
+       <h2 class="pagina">Notificaciones</h2>
+       <p class="muted">Historial completo. Quitar una notificacion la saca del dashboard y del contador, pero queda registrada aqui.</p>
+     </div>
+     <div class="stats-fila">
+       <div class="stat"><div class="num">${todas.length}</div><div class="lbl">En historial</div></div>
+       <div class="stat"><div class="num">${r.pendientes || 0}</div><div class="lbl">En dashboard</div></div>
+       <div class="stat"><div class="num">${descartadas}</div><div class="lbl">Quitadas</div></div>
+     </div>
+     <div class="seccion">
+       <button class="btn btn-notif" id="btn-descartar-notifs">Quitar todas</button>
+       <button class="btn btn-notif" id="btn-restaurar-notifs">Restaurar quitadas</button>
+     </div>
+     <div class="tarjeta">
+       <div id="lista-notifs">${notifsHtml(todas)}</div>
+     </div>`
+  );
+
+  notifsEnlazar(() => CargarPanel(panelNotificaciones));
+}
+
 async function panelAdminResumen() {
-  const [est, act, tor, sol] = await Promise.all([
+  const [est, act, tor, sol, notifs] = await Promise.all([
     API.establecimientos().catch(() => []),
     API.actividades().catch(() => []),
     API.torneos().catch(() => []),
     API.solicitudes().catch(() => []),
+    API.notificaciones().catch(() => ({ notificaciones: [], pendientes: 0 })),
   ]);
+  const listaNotifs = notifs.notificaciones || [];
+  const pendientesNotifs = notifs.pendientes || 0;
 
   const solicitudesPendientes = sol.filter((s) => s.estado === "en_proceso");
 
@@ -329,8 +437,6 @@ async function panelAdminResumen() {
     cancelado: { label: "Cancelado", clase: "est-cancelado" },
     finalizado: { label: "Finalizado", clase: "est-finalizado" },
   };
-
-  const torneosVigentes = tor.filter((t) => ["activo", "en_curso", "inscripciones"].includes(t.estado));
 
   const haceUnMes = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const cambiosRecientes = tor
@@ -366,20 +472,6 @@ async function panelAdminResumen() {
        <button class="btn btn-primario2" id="btn-admin-agenda">Agenda</button>
      </div>
 
-     <h3 class="subtitulo-seccion">Torneos Activos</h3>
-     <div class="tarjeta">
-       ${torneosVigentes.length ? `
-         <table><thead><tr><th>Torneo</th><th>Actividad / Deporte</th><th>Ano</th><th>Estado</th></tr></thead>
-         <tbody>${torneosVigentes.map((t) => `
-           <tr>
-             <td><strong>${esc(t.nombre)}</strong></td>
-             <td>${esc(t.actividad ? t.actividad.nombre : "-")}</td>
-             <td>${esc(t.anio)}</td>
-             <td>${formatearEstado(t.estado)}</td>
-           </tr>`).join("")}</tbody></table>`
-         : "<p class='muted'>No hay torneos activos en este momento.</p>"}
-     </div>
-
      <h3 class="subtitulo-seccion">Cambios Recientes (ultimo mes)</h3>
      <div class="tarjeta">
        ${cambiosRecientes.length ? cambiosRecientes.map((t) => {
@@ -391,11 +483,15 @@ async function panelAdminResumen() {
            <p class="muted">${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</p>
          </div>`;
        }).join("") : "<p class='muted'>No hubo cambios de torneos en el ultimo mes.</p>"}
-     </div>`
+     </div>
+     ${bloqueNotificacionesHtml(listaNotifs, pendientesNotifs)}`
   );
 
   $("#btn-admin-sol").onclick = () => navegar("adminSolicitudes");
   $("#btn-admin-agenda").onclick = () => navegar("adminAgenda");
+  const btnHist = document.getElementById("btn-ver-historial-notifs");
+  if (btnHist) btnHist.onclick = () => navegar("notificaciones");
+  notifsEnlazar(() => CargarPanel(panelAdminResumen));
 }
 
 async function panelAdminEstablecimientos() {
@@ -443,8 +539,24 @@ async function panelAdminUsuarios() {
        </div>
        <button class="btn btn-ok" id="btn-guardar-usr">Guardar</button>
      </div>
+     <div class="act-buscador">
+       <input id="buscador-usr" type="search" placeholder="Buscar por nombre, RUT, rol o establecimiento..." aria-label="Buscar usuario">
+       <select id="filtro-rol-usr" class="buscador-select" aria-label="Filtrar por rol">
+         <option value="">Todos los roles</option>
+         <option value="admin">Admin</option>
+         <option value="coordinador">Coordinador</option>
+         <option value="lector">Lector</option>
+       </select>
+       <select id="filtro-est-usr" class="buscador-select" aria-label="Filtrar por establecimiento">
+         <option value="">Todos los establecimientos</option>
+         ${est.map((e) => `<option value="${e._id}">${esc(e.codigo)} - ${esc(e.nombre)}</option>`).join("")}
+       </select>
+       <span id="cont-usr" class="act-buscador-contador">0 usuarios</span>
+     </div>
+     <p id="usr-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron usuarios.</p>
      <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Rol</th><th>Establecimiento</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td></tr>`).join("")}</tbody></table></div>`
+     <tbody>${usuarios.map((u) => `<tr data-busq="${esc((((u.nombre || "") + " " + (u.rut || "") + " " + (u.rol || "") + " " + (u.establecimiento ? (u.establecimiento.nombre || "") : "") + " " + (u.establecimiento ? (u.establecimiento.codigo || "") : "")).toLowerCase()))}" data-rol="${esc(u.rol || "")}" data-est="${esc(u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "")}">
+       <td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? (u.establecimiento.nombre || u.establecimiento) : "-")}</td></tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nuevo-usr").onclick = () => $("#form-nuevo-usr").classList.toggle("oculta");
   initCombo("usr-est-txt", opEst, (o) => { $("#usr-est").value = o.valor; }, "Buscar establecimiento...");
@@ -457,6 +569,28 @@ async function panelAdminUsuarios() {
       panelAdminUsuarios();
     } catch (err) { mostrarMensaje(err.message); }
   };
+  const buscarUsr = () => {
+    const q = ($("#buscador-usr").value || "").trim().toLowerCase();
+    const r = $("#filtro-rol-usr").value;
+    const e = $("#filtro-est-usr").value;
+    let total = 0;
+    document.querySelectorAll("#contenido tbody tr").forEach((tr) => {
+      const coincide =
+        (!q || (tr.dataset.busq || "").includes(q)) &&
+        (!r || tr.dataset.rol === r) &&
+        (!e || tr.dataset.est === e);
+      tr.style.display = coincide ? "" : "none";
+      if (coincide) total++;
+    });
+    const aviso = document.getElementById("usr-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !((q || r || e) && total === 0));
+    const contador = document.getElementById("cont-usr");
+    if (contador) contador.textContent = total + " usuario(s)";
+  };
+  $("#buscador-usr").addEventListener("input", buscarUsr);
+  $("#filtro-rol-usr").addEventListener("change", buscarUsr);
+  $("#filtro-est-usr").addEventListener("change", buscarUsr);
+  buscarUsr();
 }
 
 let __actEditando = null;
@@ -795,12 +929,193 @@ function abrirFormActividad(a) {
   form.scrollIntoView({ behavior: "smooth" });
 }
 
+async function panelHistorialTorneos() {
+  const todos = await API.torneos();
+  const finalizados = todos.filter((t) => t.estado === "finalizado");
+  const porAnio = {};
+  finalizados.forEach((t) => {
+    (porAnio[t.anio] = porAnio[t.anio] || []).push(t);
+  });
+  const anios = Object.keys(porAnio).sort((a, b) => b - a);
+
+  const campeonDe = async (t) => {
+    try {
+      const llaves = await API.llaves(t._id);
+      if (!llaves || !llaves.length) return null;
+      const elim = llaves.filter((l) => l.nivel >= 1);
+      if (!elim.length) return null;
+      const maxNivel = Math.max(...elim.map((l) => l.nivel));
+      const final = elim.find((l) => l.nivel === maxNivel) || elim[0];
+      if (!final || !final.ganador) return null;
+      const eq = (final.equipos || []).find((e) => e && (String(e._id) === String(final.ganador._id || final.ganador)));
+      return eq ? eq.nombre : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const bloques = [];
+  for (const anio of anios) {
+    const filas = [];
+    for (const t of porAnio[anio]) {
+      const campeon = await campeonDe(t);
+      filas.push(`<div class="tarjeta hist-tarjeta" id="hist-card-${t._id}">
+        <h3>${esc(t.nombre)} <span class="badge-rol badge-formato-${t.formato === "competitivo" ? "competitivo" : "amistoso"}">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span></h3>
+        <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
+        <p><strong>Campeon:</strong> ${campeon ? esc(campeon) : "Sin registro de final"}</p>
+        <div class="seccion"><button class="btn btn-mini" data-det-hist="${t._id}">Detalles</button><button class="btn btn-mini" data-mapa-hist="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa del Torneo</button></div>
+        <div class="hist-detalle oculto" id="hist-det-${t._id}"></div></div>`);
+    }
+    bloques.push(`<h3 class="hist-anio">Historial ${anio}</h3>${filas.join("")}`);
+  }
+
+  contenido(
+    `<div class="encabezado"><h2 class="pagina">Historial de Torneos</h2><button class="btn btn-primario2" id="btn-volver-historial">Volver</button></div>
+     <div class="encabezado-botones"></div>
+     ${anios.length ? bloques.join("") : `<div class="tarjeta"><p class="muted">Aun no hay torneos finalizados.</p></div>`}`
+  );
+  $("#btn-volver-historial").onclick = () => CargarPanel(panelAdminTorneos);
+  document.querySelectorAll("[data-det-hist]").forEach((b) => {
+    b.onclick = () => toggleDetalleHistorial(b.dataset.detHist, b);
+  });
+  document.querySelectorAll("[data-mapa-hist]").forEach((b) => {
+    b.onclick = () => abrirMapaTorneo(b.dataset.mapaHist, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
+  });
+}
+
+// Desglose de un torneo finalizado: ranking de equipos con sus goles,
+// y a la derecha los establecimientos con mas participantes inscritos.
+// Se despliega dentro de la tarjeta del historial (sin cambiar de pantalla).
+async function toggleDetalleHistorial(torneoId, boton) {
+  const cont = document.getElementById(`hist-det-${torneoId}`);
+  if (!cont) return;
+  if (!cont.classList.contains("oculta")) {
+    cont.classList.add("oculta");
+    cont.innerHTML = "";
+    boton.textContent = "Detalles";
+    boton.disabled = false;
+    return;
+  }
+  // Bloquea el boton mientras carga: evita que un segundo clic lo oculte
+  // antes de que lleguen los datos. El panel sigue oculto hasta tener
+  // contenido, para que no se vea una linea "cortada" sin desglose.
+  boton.textContent = "Cargando...";
+  boton.disabled = true;
+  const [llaves, equipos, tabla] = await Promise.all([
+    API.llaves(torneoId).catch(() => []),
+    API.equipos(torneoId).catch(() => []),
+    API.tabla(torneoId).catch(() => []),
+  ]);
+
+  // ---- Goles por equipo (suma de puntajes a favor en cada partida). ----
+  const goleadores = {};
+  llaves.forEach((l) => {
+    if (l.bye || l.estado !== "jugado") return;
+    (l.equipos || []).forEach((eq, i) => {
+      if (!eq) return;
+      const id = String(eq._id || eq);
+      if (!goleadores[id]) goleadores[id] = { goles: 0, partidos: 0, ganados: 0, perdidos: 0, empatados: 0 };
+      const p = i === 0 ? l.puntajeA : l.puntajeB;
+      const rival = i === 0 ? l.puntajeB : l.puntajeA;
+      if (p == null || rival == null) return;
+      goleadores[id].goles += p;
+      goleadores[id].partidos += 1;
+      if (p > rival) goleadores[id].ganados += 1;
+      else if (p < rival) goleadores[id].perdidos += 1;
+      else goleadores[id].empatados += 1;
+    });
+  });
+
+  // ---- Jerarquia: campeon (final) > finalista > resto por orden de tabla. ----
+  const elim = llaves.filter((l) => l.nivel >= 1 && l.estado === "jugado" && l.ganador);
+  const jerarquia = {};
+  if (elim.length) {
+    const maxNivel = Math.max(...elim.map((l) => l.nivel));
+    const final = elim.find((l) => l.nivel === maxNivel);
+    if (final) {
+      const g = String(final.ganador._id || final.ganador);
+      jerarquia[g] = 1;
+      (final.equipos || []).forEach((eq) => {
+        if (!eq) return;
+        const id = String(eq._id || eq);
+        if (id === g) return;
+        jerarquia[id] = 2;
+      });
+    }
+  }
+  const tablaEq = ((tabla || [])[0] || {}).tabla || [];
+  const ordenTabla = {};
+  tablaEq.forEach((f, i) => {
+    if (f.equipo) ordenTabla[String(f.equipo._id || f.equipo)] = i;
+  });
+
+  const equiposOrd = equipos.slice().sort((a, b) => {
+    const ia = jerarquia[String(a._id)] || 99;
+    const ib = jerarquia[String(b._id)] || 99;
+    if (ia !== ib) return ia - ib;
+    const ga = goleadores[String(a._id)] || { goles: 0 };
+    const gb = goleadores[String(b._id)] || { goles: 0 };
+    if (ga.goles !== gb.goles) return gb.goles - ga.goles;
+    return String(a.nombre || "").localeCompare(String(b.nombre || ""));
+  });
+
+  const medals = { 1: "&#129351;", 2: "&#129354;", 3: "&#129353;" };
+  const tablaOrd = (id) => {
+    const idx = ordenTabla[String(id)];
+    return Number.isInteger(idx) ? idx : null;
+  };
+  const filasEquipos = equiposOrd.map((eq, i) => {
+    const g = goleadores[String(eq._id)] || { goles: 0, partidos: 0, ganados: 0, perdidos: 0, empatados: 0 };
+    const pos = jerarquia[String(eq._id)] || (tablaOrd(eq._id) != null ? tablaOrd(eq._id) + 1 : i + 1);
+    const integrantes = (eq.alumnos || []).map((a) => esc(a.nombre)).join(", ") || "Sin integrantes";
+    return `<div class="det-equipo">
+      <div class="det-equipo-cab"><span class="det-pos">${medals[pos] || `#${pos}`}</span><strong>${esc(eq.nombre || "Equipo")}</strong>
+        <span class="det-goles">${g.goles} gol(es)</span></div>
+      <div class="det-meta">Jugados: ${g.partidos} | Ganados: ${g.ganados} | Empatados: ${g.empatados} | Perdidos: ${g.perdidos}</div>
+      <div class="det-integrantes">${integrantes}</div>
+    </div>`;
+  }).join("");
+
+  // ---- Establecimientos ordered por participantes (de mayor a menor). ----
+  const porEstablecimiento = {};
+  equipos.forEach((eq) => {
+    (eq.alumnos || []).forEach((a) => {
+      const est = a.establecimiento;
+      const nombre = est && est.nombre ? est.nombre : "Sin establecimiento";
+      if (!porEstablecimiento[nombre]) porEstablecimiento[nombre] = { total: 0, equipos: new Set() };
+      porEstablecimiento[nombre].total += 1;
+      porEstablecimiento[nombre].equipos.add(eq.nombre || "Equipo");
+    });
+  });
+  const maxPart = Math.max(1, ...Object.values(porEstablecimiento).map((x) => x.total));
+  const ListaEst = Object.entries(porEstablecimiento)
+    .sort((a, b) => b[1].total - a[1].total || a[0].localeCompare(b[0]))
+    .map(([nombre, info]) => {
+      const pct = Math.round((info.total / maxPart) * 100);
+      return `<div class="det-est">
+        <div class="det-est-cab"><strong>${esc(nombre)}</strong><span>${info.total} participante(s)</span></div>
+        <div class="det-est-barra"><div class="det-est-fill" style="width:${pct}%"></div></div>
+        <div class="det-est-eq">Equipos: ${esc([...info.equipos].join(", "))}</div>
+      </div>`;
+    }).join("");
+
+  cont.classList.remove("oculta");
+  cont.innerHTML = `<div class="det-layout">
+       <div class="det-izq"><h4 class="det-titulo">Equipos y goles</h4>${filasEquipos || `<p class="muted">Sin equipos registrados.</p>`}</div>
+       <div class="det-der"><h4 class="det-titulo">Participantes por establecimiento</h4>${ListaEst || `<p class="muted">Sin datos.</p>`}</div>
+     </div>`;
+  boton.textContent = "Ocultar";
+  boton.disabled = false;
+}
+
 async function panelAdminTorneos() {
-  const [tor, act] = await Promise.all([API.torneos(), API.actividades()]);
+  const [torTodos, act] = await Promise.all([API.torneos(), API.actividades()]);
+  // Los torneos finalizados solo se ven en el Historial.
+  const tor = torTodos.filter((t) => t.estado !== "finalizado");
   window.__actividadesAdmin = act;
   const opActCat = opcionesActividadCategoria(act);
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div>
+    `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><div class="encabezado-botones"><button class="btn btn-mini" id="btn-historial-tor">Historial</button><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div></div>
      <div class="act-buscador">
        <input id="buscador-tors" type="search" placeholder="Buscar torneo por nombre..." aria-label="Buscar torneo">
        <span id="cont-tors" class="act-buscador-contador">0 torneos</span>
@@ -821,7 +1136,7 @@ ${tor.map((t) => {
       cancelado: "Cancelado", finalizado: "Finalizado",
     };
     return `<div class="tarjeta tor-tarjeta" id="tor-tarjeta-${t._id}">
-       <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "Sin categoria")}</span> <span class="badge-rol">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span> ${t.estado === "suspendido" ? `<span class="badge-estado-tor est-suspendido">Suspendido</span>` : `<span class="badge-rol">${esc(runLabel[t.estado] || t.estado)}</span>`}</h3>
+       <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "Sin categoria")}</span> <span class="badge-rol badge-formato-${t.formato === "competitivo" ? "competitivo" : "amistoso"}">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span> ${t.estado === "suspendido" ? `<span class="badge-estado-tor est-suspendido">Suspendido</span>` : `<span class="badge-estado-tor">${esc(runLabel[t.estado] || t.estado)}</span>`}</h3>
        <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} | Llave unica</p>
        ${programacionTorneoResumen(t)}
  <div class="seccion">
@@ -836,6 +1151,7 @@ ${tor.map((t) => {
   }).join("")}`
   );
   $("#btn-nuevo-tor").onclick = () => $("#form-nuevo-tor").classList.toggle("oculta");
+  $("#btn-historial-tor").onclick = () => CargarPanel(panelHistorialTorneos);
   initCombo("tor-act-txt", opActCat, (o) => {
     $("#tor-act").value = o.extra.actividad;
     $("#tor-div").value = o.extra.division;
@@ -1243,8 +1559,6 @@ async function generarBracket() {
   try {
     const res = await API.ejecutarBracket(torneoId, datos);
     mostrarMensaje(`Eliminatorias generadas (${res.totalRondas} ronda${res.totalRondas > 1 ? "s" : ""})`);
-    document.getElementById("modal-bracket")?.classList.add("oculta");
-    __torneoBracket = null;
     panelAdminEquipos(torneoId);
   } catch (err) {
     mostrarMensaje(err.message);
@@ -1255,64 +1569,133 @@ async function generarBracket() {
 // actividad seleccionada y sugiere un nombre de torneo para esa categoria.
 // Panel de gestion de equipos del torneo (estudiantes de distintos
 // establecimientos agrupados en equipos por sorteo automatico o manual).
+const establecimientoNombre = (a) => (a && a.establecimiento ? a.establecimiento.nombre : "Sin establecimiento");
+
+const tarjetaEquipo = (e, pool = []) => {
+  const actuales = e.alumnos || [];
+  const actualIds = new Set(actuales.map((a) => String(a._id || a.id)));
+  const disponibles = pool.filter((a) => !actualIds.has(String(a._id || a.id)));
+  return `<div class="tarjeta">
+  <h3>${esc(e.nombre)}
+    <button class="btn btn-mini float-der" data-elim-equipo="${e._id}">Eliminar</button>
+    <button class="btn btn-mini float-der" data-edit-equipo="${e._id}" style="margin-right:6px">Editar</button>
+  </h3>
+  <ul class="lista-alumnos">${actuales.map((a) => `<li><strong>${esc(a.nombre)}</strong> <span class="muted">- ${esc(establecimientoNombre(a))}</span> <button class="btn btn-mini btn-peligro float-der oculta" data-expulsar="${e._id}__${a._id}">Expulsar</button></li>`).join("") || '<li class="muted">Sin estudiantes asignados</li>'}</ul>
+  <div class="eq-editor oculta" data-editor="${e._id}">
+    <div class="campo"><label>Agregar alumno disponible (${disponibles.length})</label>
+      <div class="grid-2">
+        ${comboHtml(`eq-agregar-${e._id}`, "Busque por nombre o apellido...")}
+        <button class="btn btn-ok btn-mini" data-agregar-btn="${e._id}" ${disponibles.length ? "" : "disabled"}>Agregar</button>
+      </div>
+      ${disponibles.length ? "" : '<p class="muted">No hay estudiantes disponibles para este torneo.</p>'}
+    </div>
+  </div>
+</div>`;
+};
+
 async function panelAdminEquipos(torneoId) {
-  const [equipos, pool] = await Promise.all([
+  const [equipos, pool, torneos] = await Promise.all([
     API.equipos(torneoId),
     API.poolEquipos(torneoId),
+    API.torneos().catch(() => []),
   ]);
+  const torneo = Array.isArray(torneos) ? torneos.find((t) => String(t._id) === String(torneoId)) : null;
+  window.__torneoBracket = torneoId;
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Equipos del Torneo</h2>
-       <button class="btn btn-mini" id="btn-volver-equipos">Volver</button></div>
-     <div class="tarjeta">
-       <h3>Ejecutar Sorteo</h3>
-       <p class="muted">Genera la fase de grupos (todos contra todos) y arma las eliminatorias automaticamente segun la cantidad de equipos: 2 -> Final, 4 -> Semifinal, 8 -> Cuartos de Final, 16 -> Octavos de Final.</p>
-       <button class="btn btn-ok" id="btn-ejecutar-sorteo-equipos">Ejecutar Sorteo</button>
-       <button class="btn btn-mini" id="btn-generar-bracket-equipos">Generar Eliminatorias (opciones)</button>
-     </div>
-     <div class="tarjeta">
-       <h3>Sortear Equipos Automaticamente</h3>
-       <p class="muted">Distribuye los ${pool.total} estudiantes sin equipo en la cantidad indicada (min 2 estudiantes por equipo).</p>
-       <div class="grid-2">
-         <div class="campo"><label>Cantidad de equipos</label><input id="eq-cantidad" type="number" value="2" min="2"></div>
+    `<div class="encabezado"><div><h2 class="pagina">Equipos del Torneo</h2>
+       <p class="tor-eq-nombre">${torneo ? esc(torneo.nombre) : ""}</p></div>
+<button class="btn btn-mini" id="btn-volver-equipos">Volver</button></div>
+     <div class="eq-layout">
+<div class="eq-col eq-col-equipos">
+          <h3 class="subtitulo-seccion">Equipos actuales (${equipos.length})</h3>
+          <div class="campo"><label for="eq-buscar">Buscar equipo o alumno</label>
+            <input id="eq-buscar" type="search" placeholder="Nombre del equipo o del alumno..." autocomplete="off"></div>
+          <div id="eq-lista">
+          ${equipos.length ? equipos.map((e) => tarjetaEquipo(e, pool.pool)).join("") : '<p class="muted">Aun no hay equipos en este torneo.</p>'}
+          </div>
+        </div>
+       <div class="eq-col eq-col-acciones">
+          <div class="tarjeta">
+            <h3>Sortear Equipos Automaticamente</h3>
+            <p class="muted">Distribuye los ${pool.total} estudiantes sin equipo en la cantidad de equipos indicada (min 2 estudiantes por equipo).</p>
+            <div class="campo"><label>Cantidad de equipos</label><input id="eq-cantidad" type="number" value="2" min="2"></div>
+            <button class="btn btn-ok" id="btn-sortear-equipos">Sortear Equipos</button>
+            <div id="eq-aviso" class="aviso-sorteo oculta"></div>
+          </div>
+          <div id="modal-bracket" class="tarjeta">
+            <h3>Generar Eliminatorias</h3>
+            <p class="muted">Ejecutar Sorteo genera la fase de grupos (todos contra todos) y arma las eliminatorias automaticamente segun la cantidad de equipos: 2 -> Final, 4 -> Semifinal, 8 -> Cuartos de Final, 16 -> Octavos de Final.</p>
+            <button class="btn btn-ok" id="btn-ejecutar-sorteo-equipos">Ejecutar Sorteo</button>
+            <p class="muted" style="margin-top:10px">Tambien puede generar solo el bracket de eliminacion: todos los equipos clasifican y se arma 4 equipos hasta Semifinal, 8 hasta Cuartos de Final, 16 hasta Octavos de Final.</p>
+            <div class="campo"><label>Modo de sorteo</label>
+              <select id="br-modo">
+                <option value="desempeno">Desempeno (igualado: 1° con el ultimo)</option>
+                <option value="azar">Al azar</option>
+                <option value="manual">Manual (elegir los enfrentamientos)</option>
+              </select>
+            </div>
+            <div id="br-manual" class="oculta"></div>
+            <button class="btn btn-ok" id="btn-generar-bracket">Generar</button>
+            <button class="btn btn-mini" id="btn-cancelar-bracket">Cancelar</button>
+          </div>
+<div class="tarjeta">
+            <h3>Crear Equipo Manual / Mixto</h3>
+            <p class="muted">Seleccione estudiantes de cualquier establecimiento (el equipo puede mezclar establecimientos).</p>
+            <div class="campo"><label>Nombre del equipo</label><input id="eq-nombre" placeholder="Equipo Estrellas"></div>
+            <div class="campo"><label>Agregar estudiante disponible (${pool.pool.length})</label>
+              <div class="grid-2">
+                ${comboHtml("eq-agregar-manual", "Busque por nombre o apellido...")}
+                <button class="btn btn-ok btn-mini" id="btn-agregar-manual" ${pool.pool.length ? "" : "disabled"}>Agregar</button>
+              </div>
+              ${pool.pool.length ? "" : '<p class="muted">No hay estudiantes sin equipo en este torneo.</p>'}
+            </div>
+            <div class="campo"><label>Integrantes seleccionados</label>
+              <ul class="lista-alumnos" id="eq-manual-lista"><li class="muted">Sin estudiantes seleccionados.</li></ul>
+            </div>
+            <button class="btn btn-ok" id="btn-crear-equipo">Crear Equipo</button>
+          </div>
        </div>
-       <button class="btn btn-ok" id="btn-sortear-equipos">Sortear Equipos</button>
-     </div>
-     <div class="tarjeta">
-       <h3>Crear Equipo Manual / Mixto</h3>
-       <p class="muted">Seleccione estudiantes de cualquier establecimiento (el equipo puede mezclar establecimientos).</p>
-       <div class="grid-2">
-         <div class="campo"><label>Nombre del equipo</label><input id="eq-nombre" placeholder="Equipo Estrellas"></div>
-       </div>
-       <div class="campo"><label>Estudiantes disponibles</label>
-         <div id="eq-pool" class="select-pool">
-           ${pool.pool.length ? pool.pool.map((a) => `<label class="pool-item">
-             <input type="checkbox" value="${a._id}"> ${esc(a.nombre)} <span class="muted">- ${esc(a.establecimiento ? a.establecimiento.nombre : "Sin establecimiento")}</span>
-           </label>`).join("") : '<p class="muted">No hay estudiantes sin equipo en este torneo.</p>'}
-         </div>
-       </div>
-       <button class="btn btn-ok" id="btn-crear-equipo">Crear Equipo</button>
-     </div>
-     <div id="modal-bracket" class="tarjeta oculta">
-       <h3>Generar Eliminatorias</h3>
-       <p class="muted">Todos los equipos clasifican. Segun la cantidad se arma: 4 equipos hasta Semifinal, 8 hasta Cuartos de Final, 16 hasta Octavos de Final.</p>
-       <div class="campo"><label>Modo de sorteo</label>
-         <select id="br-modo">
-           <option value="desempeno">Desempeno (igualado: 1° con el ultimo)</option>
-           <option value="azar">Al azar</option>
-           <option value="manual">Manual (elegir los enfrentamientos)</option>
-         </select>
-       </div>
-       <div id="br-manual" class="oculta"></div>
-       <button class="btn btn-ok" id="btn-generar-bracket">Generar</button>
-       <button class="btn btn-mini" id="btn-cancelar-bracket">Cancelar</button>
-     </div>
-     <h3 class="subtitulo-seccion">Equipos actuales (${equipos.length})</h3>
-     ${equipos.length ? equipos.map((e) => `<div class="tarjeta">
-       <h3>${esc(e.nombre)} <button class="btn btn-mini btn-peligro float-der" data-elim-equipo="${e._id}">Eliminar</button></h3>
-       <ul class="lista-alumnos">${(e.alumnos || []).map((a) => `<li><strong>${esc(a.nombre)}</strong> <span class="muted">- ${esc(a.establecimiento ? a.establecimiento.nombre : "Sin establecimiento")}</span></li>`).join("") || '<li class="muted">Sin estudiantes asignados</li>'}</ul>
-     </div>`).join("") : '<p class="muted">Aun no hay equipos en este torneo.</p>'}`
-  );
-  $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
+     </div>`
+   );
+$("#btn-volver-equipos").onclick = () => panelAdminTorneos();
+  const initCombosAgregar = () => {
+    document.querySelectorAll("[data-editor]").forEach((editor) => {
+      const equipoId = editor.dataset.editor;
+      const inp = document.getElementById(`eq-agregar-${equipoId}`);
+      if (!inp) return;
+      const equipo = equipos.find((x) => String(x._id) === String(equipoId));
+      const actualIds = new Set((equipo.alumnos || []).map((a) => String(a._id || a.id)));
+      const disponibles = (pool.pool || []).filter((a) => !actualIds.has(String(a._id || a.id)));
+      initCombo(`eq-agregar-${equipoId}`, disponibles.map((a) => ({
+        valor: String(a._id),
+        texto: `${a.nombre} - ${establecimientoNombre(a)}`,
+      })), (o) => { inp.dataset.valor = o.valor; }, "Busque por nombre o apellido...");
+      inp.addEventListener("input", () => { delete inp.dataset.valor; });
+    });
+  };
+  initCombosAgregar();
+  const buscador = document.getElementById("eq-buscar");
+  if (buscador && equipos.length) {
+    buscador.addEventListener("input", () => {
+      const q = buscador.value.trim().toLowerCase();
+      const filtrados = equipos.filter((e) => {
+        if (!q) return true;
+        if ((e.nombre || "").toLowerCase().includes(q)) return true;
+        return (e.alumnos || []).some((a) => (a.nombre || "").toLowerCase().includes(q));
+      });
+      const lista = document.getElementById("eq-lista");
+      if (lista) {
+        lista.innerHTML = filtrados.length
+          ? filtrados.map((e) => tarjetaEquipo(e, pool.pool)).join("")
+          : '<p class="muted">Sin coincidencias.</p>';
+        initCombosAgregar();
+      }
+      const h3 = document.querySelector(".eq-col-equipos .subtitulo-seccion");
+      if (h3) h3.textContent = q
+        ? `Equipos actuales (${filtrados.length} de ${equipos.length})`
+        : `Equipos actuales (${equipos.length})`;
+    });
+  }
   $("#btn-ejecutar-sorteo-equipos").onclick = async () => {
     try {
       await API.ejecutarSorteo(torneoId);
@@ -1320,11 +1703,16 @@ async function panelAdminEquipos(torneoId) {
       panelAdminEquipos(torneoId);
     } catch (err) { mostrarMensaje(err.message); }
   };
-  $("#btn-generar-bracket-equipos").onclick = () => abrirModalBracket(torneoId);
   $("#btn-generar-bracket")?.addEventListener("click", generarBracket);
   $("#btn-cancelar-bracket")?.addEventListener("click", () => {
-    $("#modal-bracket")?.classList.add("oculta");
-    window.__torneoBracket = null;
+    const inter = document.getElementById("br-manual");
+    if (inter) {
+      inter.innerHTML = "";
+      inter.classList.add("oculta");
+    }
+    const modo = document.getElementById("br-modo");
+    if (modo) modo.value = "desempeno";
+    window.__torneoBracket = torneoId;
   });
   $("#br-modo")?.addEventListener("change", () => {
     const manual = document.getElementById("br-manual");
@@ -1334,24 +1722,106 @@ async function panelAdminEquipos(torneoId) {
   });
   $("#btn-sortear-equipos").onclick = async () => {
     try {
-      await API.sortearEquipos(torneoId, Number($("#eq-cantidad").value));
+      const res = await API.sortearEquipos(torneoId, Number($("#eq-cantidad").value));
+      const aviso = $("#eq-aviso");
+      if (aviso) {
+        if (res.sobrantes > 0) {
+          aviso.textContent = `Se formaron ${res.totalEquipos} equipos de ${res.porEquipo} jugadores. Sobran ${res.sobrantes} estudiante${res.sobrantes > 1 ? "s" : ""} sin equipo: puede hacer otro sorteo o crear un equipo manual.`;
+          aviso.classList.remove("oculta");
+        } else {
+          aviso.classList.add("oculta");
+        }
+      }
+      const global = window.mostrarMensaje || mostrarMensaje;
+      global(res.mensaje || "Equipos sorteados");
       panelAdminEquipos(torneoId);
     } catch (err) { mostrarMensaje(err.message); }
   };
+  const manualSel = new Set();
+  const pintarManual = () => {
+    const lista = document.getElementById("eq-manual-lista");
+    if (!lista) return;
+    const sel = pool.pool.filter((a) => manualSel.has(String(a._id || a.id)));
+    lista.innerHTML = sel.length
+      ? sel.map((a) => `<li><strong>${esc(a.nombre)}</strong> <span class="muted">- ${esc(establecimientoNombre(a))}</span> <button class="btn btn-mini btn-peligro float-der" data-manual-quitar="${a._id}">Quitar</button></li>`).join("")
+      : '<li class="muted">Sin estudiantes seleccionados.</li>';
+  };
+  initCombo("eq-agregar-manual", pool.pool.map((a) => ({
+    valor: String(a._id || a.id),
+    texto: `${a.nombre} - ${establecimientoNombre(a)}`,
+  })), (o) => { const inp = document.getElementById("eq-agregar-manual"); inp.dataset.valor = o.valor; }, "Busque por nombre o apellido...");
+  document.getElementById("eq-agregar-manual").addEventListener("input", () => {
+    delete document.getElementById("eq-agregar-manual").dataset.valor;
+  });
+  $("#btn-agregar-manual").onclick = () => {
+    const inp = document.getElementById("eq-agregar-manual");
+    const id = inp && inp.dataset.valor;
+    if (!id) { mostrarMensaje("Busque y seleccione un estudiante de la lista"); return; }
+    manualSel.add(id);
+    inp.value = ""; delete inp.dataset.valor;
+    pintarManual();
+  };
+  document.getElementById("eq-manual-lista").addEventListener("click", (ev) => {
+    const quitar = ev.target.closest("[data-manual-quitar]");
+    if (quitar) { manualSel.delete(quitar.dataset.manualQuitar); pintarManual(); }
+  });
   $("#btn-crear-equipo").onclick = async () => {
-    const alumnos = Array.from(document.querySelectorAll("#eq-pool input:checked")).map((c) => c.value);
+    const alumnos = Array.from(manualSel);
     try {
       await API.crearEquipo(torneoId, { nombre: $("#eq-nombre").value, alumnos });
       panelAdminEquipos(torneoId);
     } catch (err) { mostrarMensaje(err.message); }
   };
-  document.querySelectorAll("[data-elim-equipo]").forEach((b) => {
-    b.onclick = async () => {
-      if (!await confirmarMensaje("¿Eliminar este equipo?")) return;
-      try { await API.eliminarEquipo(torneoId, b.dataset.elimEquipo); panelAdminEquipos(torneoId); }
-      catch (err) { mostrarMensaje(err.message); }
-    };
-  });
+  const eqLista = document.getElementById("eq-lista");
+  if (eqLista) {
+    eqLista.addEventListener("click", async (ev) => {
+      const editar = ev.target.closest("[data-edit-equipo]");
+      if (editar) {
+        const id = editar.dataset.editEquipo;
+        const editor = document.querySelector(`[data-editor="${id}"]`);
+        const tarjeta = editor.closest(".tarjeta");
+        if (editor) editor.classList.toggle("oculta");
+        tarjeta.classList.toggle("eq-editando");
+        tarjeta.querySelectorAll("[data-expulsar]").forEach((b) => b.classList.toggle("oculta"));
+        return;
+      }
+      const expulsar = ev.target.closest("[data-expulsar]");
+      if (expulsar) {
+        const [equipoId, alumnoId] = expulsar.dataset.expulsar.split("__");
+        const equipo = equipos.find((x) => String(x._id) === String(equipoId));
+        const alumnos = (equipo.alumnos || []).filter((a) => String(a._id || a.id) !== String(alumnoId)).map((a) => a._id || a.id);
+        if (!await confirmarMensaje("Expulsar a este estudiante del equipo?")) return;
+        try {
+          await API.actualizarEquipo(torneoId, equipoId, { alumnos });
+          mostrarMensaje("Estudiante expulsado del equipo");
+          panelAdminEquipos(torneoId);
+        } catch (err) { mostrarMensaje(err.message); }
+        return;
+      }
+      const agregar = ev.target.closest("[data-agregar-btn]");
+      if (agregar) {
+        const equipoId = agregar.dataset.agregarBtn;
+        const inp = document.getElementById(`eq-agregar-${equipoId}`);
+        const alumnoId = inp && inp.dataset.valor;
+        if (!alumnoId) { mostrarMensaje("Busque y seleccione un estudiante de la lista"); return; }
+        const equipo = equipos.find((x) => String(x._id) === String(equipoId));
+        const alumnos = (equipo.alumnos || []).map((a) => a._id || a.id);
+        alumnos.push(alumnoId);
+        try {
+          await API.actualizarEquipo(torneoId, equipoId, { alumnos });
+          mostrarMensaje("Estudiante agregado al equipo");
+          panelAdminEquipos(torneoId);
+        } catch (err) { mostrarMensaje(err.message); }
+        return;
+      }
+      const eliminar = ev.target.closest("[data-elim-equipo]");
+      if (eliminar) {
+        if (!await confirmarMensaje("¿Eliminar este equipo?")) return;
+        try { await API.eliminarEquipo(torneoId, eliminar.dataset.elimEquipo); panelAdminEquipos(torneoId); }
+        catch (err) { mostrarMensaje(err.message); }
+      }
+    });
+  }
 }
 
 // ============================================================
@@ -1368,25 +1838,20 @@ const wcIdxGanador = (l) => {
   return String(l.equipos[0]._id || l.equipos[0]) === String(g) ? 0 : 1;
 };
 
-const wcIntegrantes = (equipo) => {
-  if (!equipo || !equipo.alumnos || !equipo.alumnos.length) return "";
-  return (equipo.alumnos || []).map((a) => a && a.nombre ? a.nombre : "").filter(Boolean).join(", ");
-};
-
 const wcTeamCard = (l, equipo, idx, top) => {
   if (!equipo) return `<div class="wc-team wc-libre" style="height:${MAPA.TH}px;top:${top}px"><span class="wc-nombre">Por definir</span></div>`;
   const gana = wcIdxGanador(l) === idx;
   const pts = l.puntajeA !== null && l.puntajeA !== undefined
     ? `<span class="wc-puntaje">${idx === 0 ? l.puntajeA : l.puntajeB}</span>` : "";
-  const integrantes = wcIntegrantes(equipo);
-  return `<div class="wc-team ${gana ? "ganador" : ""}" style="height:${MAPA.TH}px;top:${top}px"><span class="wc-nombre">${esc(equipo.nombre || "Libre")}</span>${integrantes ? `<span class="wc-integrantes">${esc(integrantes)}</span>` : ""}${pts}</div>`;
+  return `<div class="wc-team ${gana ? "ganador" : ""}" style="height:${MAPA.TH}px;top:${top}px"><span class="wc-nombre">${esc(equipo.nombre || "Libre")}</span>${pts}</div>`;
 };
 
 const wcDuo = (l, x, y, equipos = []) => {
   const a = l.equipos && l.equipos[0] ? l.equipos[0] : null;
   const b = l.equipos && l.equipos[1] ? l.equipos[1] : null;
-  const jugable = !l.bye && l.estado === "pendiente" && a && b;
-  const editable = !l.bye && l.estado === "pendiente" && l.nivel >= 1;
+  const soloLectura = API.usuario && API.usuario.rol === "lector";
+  const jugable = !soloLectura && !l.bye && l.estado === "pendiente" && a && b;
+  const editable = !soloLectura && !l.bye && l.estado === "pendiente" && l.nivel >= 1;
   const MH = wcMH();
   const topB = MAPA.TH + MAPA.VS;
   const actualA = a ? String(a._id || a) : "";
@@ -1509,7 +1974,7 @@ async function mostrarBracket(torneoId, div, or = "h") {
       </div></div>`;
   }
 
-  div.innerHTML = bandGrupos + elimHTML;
+  div.innerHTML = `<div class="fase-layout">${bandGrupos}${elimHTML}</div>`;
   wcEnlazarAcciones(div, torneoId, or);
 }
 
@@ -2035,98 +2500,146 @@ async function panelAdminReportes() {
 // PANELES COORDINADOR
 // ============================================================
 async function panelCoordResumen() {
-  const [nomina, notifs] = await Promise.all([
+  const [nomina, notifs, ins] = await Promise.all([
     API.nomina().catch(() => ({ total: 0, porActividad: [] })),
-    API.notificaciones().catch(() => ({ notificaciones: [], noLeidas: 0 })),
+    API.notificaciones().catch(() => ({ notificaciones: [], pendientes: 0 })),
+    API.inscripciones().catch(() => []),
   ]);
   const lista = notifs.notificaciones || [];
-  const noLeidas = notifs.noLeidas || 0;
-  const ICONO_NOTIF = { suspension: "&#128683;", reactivacion: "&#9989;", eliminacion: "&#128465;", requisitos: "&#128203;" };
-  const TITULO_NOTIF = { suspension: "Torneo suspendido", reactivacion: "Torneo reactivado", eliminacion: "Torneo eliminado", requisitos: "Requisitos actualizados" };
-  const listaHtml = lista.length
-    ? lista
-        .map(
-          (n) => `<div class="notif-tarjeta ${n.leida ? "notif-leida" : "notif-no-leida"}" data-leer-notif="${n._id}" data-tipo-notif="${esc(n.tipo || "")}" data-tor-notif="${n.torneo ? esc(String(n.torneo)) : ""}">
-            <div class="notif-icono">${ICONO_NOTIF[n.tipo] || "&#128276;"}</div>
-            <div class="notif-cuerpo">
-              <div class="notif-titulo">${esc(TITULO_NOTIF[n.tipo] || "Notificacion del Admin")}</div>
-              <div class="notif-msg">${esc(n.mensaje)}</div>
-              <div class="notif-fecha muted">${new Date(n.fechaCreacion).toLocaleString("es-CL")}</div>
-            </div>
-            ${n.leida ? "" : `<span class="notif-punto" title="Nueva"></span>`}
-          </div>`
-        )
-        .join("")
-    : `<p class="muted">Sin notificaciones del Admin por ahora.</p>`;
+  const pendientes = notifs.pendientes || 0;
   contenido(
-    `<div class="cabeza-panel">
-       <h2 class="pagina">Resumen del Establecimiento</h2>
-     </div>
-     <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Estudiantes inscritos</div></div>
-     <div class="seccion">
-       <button class="btn" id="btn-vercat">Ver Cartelera</button>
-       <button class="btn" id="btn-ir-torneos">Ir a Torneos</button>
-       <button class="btn" id="btn-marcar-notifs">Marcar todas leidas</button>
-     </div>
-     <div id="cartelera" class="oculta"></div>
-     <div class="seccion">
-       <h3>Notificaciones del Admin <span class="badge-rol">${noLeidas} nueva(s)</span></h3>
-       <div id="lista-notifs">${listaHtml}</div>
+    `<div class="postula-fila">
+      <div class="postula-cartelera">
+        <div class="cabeza-panel">
+          <h2 class="pagina">Resumen del Establecimiento</h2>
+        </div>
+        <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Estudiantes inscritos</div></div>
+        <div class="seccion">
+          <button class="btn" id="btn-vercat">Ver Cartelera</button>
+          <button class="btn" id="btn-ir-torneos">Ir a Torneos</button>
+          ${bloqueInscribirNuevoHtml()}
+        </div>
+        ${formInscribirNuevoHtml()}
+        <div id="cartelera" class="oculta"></div>
+        ${bloqueNotificacionesHtml(lista, pendientes)}
+      </div>
+      ${bloqueMisInscripcionesHtml(ins)}
      </div>`
   );
   $("#btn-vercat").onclick = () => cargarCarteleraEn("#cartelera");
   $("#btn-ir-torneos").onclick = () => navegar("coordTorneos");
-  $("#btn-marcar-notifs").onclick = async () => { try { await API.marcarTodasNotificacionesLeidas(); panelCoordResumen(); } catch (err) { mostrarMensaje(err.message); } };
-  document.querySelectorAll("[data-leer-notif]").forEach((f) => {
-    f.onclick = async () => {
-      try {
-        if (!f.classList.contains("notif-no-leida")) { navegar("coordTorneos"); return; }
-        await API.marcarNotificacionLeida(f.dataset.leerNotif);
-        refrescarCampana();
-        navegar("coordTorneos");
-      } catch (err) { mostrarMensaje(err.message); }
-    };
+  const btnHistorial = document.getElementById("btn-ver-historial-notifs");
+  if (btnHistorial) btnHistorial.onclick = () => navegar("notificaciones");
+  notifsEnlazar(() => panelCoordResumen());
+  enlazarMisInscripciones(ins, () => panelCoordResumen());
+  await enlazarInscribirNuevo(() => panelCoordResumen());
+}
+
+// Inscribir un estudiante nuevo a una actividad: boton directo en el
+// dashboard del coordinador (Resumen y Postulaciones). El boton va dentro
+// de la fila de acciones; el formulario es un bloque aparte (la fila es
+// flex-row y no debe contener el formulario).
+function bloqueInscribirNuevoHtml() {
+  return `<button class="btn" id="btn-ins-nuevo">+ Inscribir Estudiante</button>`;
+}
+
+function formInscribirNuevoHtml() {
+  return `<div id="form-ins-nuevo" class="tarjeta oculta" style="margin-top:10px">
+      <h4>Inscribir estudiante nuevo a una actividad</h4>
+      <div class="grid-2">
+        <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("insn-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="insn-act"><input type="hidden" id="insn-div"></div>
+        <div class="campo"><label>RUT</label><input id="insn-rut" autocomplete="off"></div>
+        <div class="campo"><label>Nombres</label><input id="insn-nom" autocomplete="off"></div>
+        <div class="campo"><label>Apellidos</label><input id="insn-ape" autocomplete="off"></div>
+        <div class="campo"><label>Apoderado</label><input id="insn-apo" autocomplete="off"></div>
+        <div class="campo"><label>Genero</label><select id="insn-gen"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
+        <div class="campo"><label>Fecha nacimiento</label><input type="date" id="insn-fec"></div>
+        <div class="campo"><label>Edad (automatica)</label><input id="insn-edad" readonly></div>
+        <div class="campo"><label>Email</label><input id="insn-email" autocomplete="off"></div>
+        <div class="campo"><label>Telefono</label><input id="insn-tel" autocomplete="off"></div>
+      </div>
+      <button class="btn btn-ok" id="btn-guardar-insn">Inscribir</button>
+    </div>`;
+}
+
+async function enlazarInscribirNuevo(alRefrescar) {
+  const btn = $("#btn-ins-nuevo");
+  if (!btn) return;
+  btn.onclick = () => $("#form-ins-nuevo").classList.toggle("oculta");
+  const act = await API.actividades().catch(() => []);
+  initCombo("insn-act-txt", opcionesActividadCategoria(act), (o) => {
+    $("#insn-act").value = o.extra.actividad;
+    $("#insn-div").value = o.extra.division;
+  }, "Buscar actividad y categoria...");
+  const fec = $("#insn-fec");
+  if (fec) fec.addEventListener("input", () => {
+    const nac = new Date(fec.value);
+    const hoy = new Date();
+    let edad = "";
+    if (fec.value && !isNaN(nac)) {
+      let e = hoy.getFullYear() - nac.getFullYear();
+      const m = hoy.getMonth() - nac.getMonth();
+      if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
+      edad = `${e} anio(s)`;
+    }
+    const campo = $("#insn-edad");
+    if (campo) campo.value = edad;
   });
+  $("#btn-guardar-insn").onclick = async () => {
+    const division = $("#insn-div").value;
+    const rut = $("#insn-rut").value.trim();
+    const nom = $("#insn-nom").value.trim();
+    const ape = $("#insn-ape").value.trim();
+    const fecV = $("#insn-fec").value;
+    if (!division) { mostrarMensaje("Seleccione la actividad y categoria"); return; }
+    if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
+    try {
+      await API.inscribirAlumno({
+        actividad: $("#insn-act").value,
+        division,
+        alumno: {
+          rut,
+          nombre: `${nom} ${ape}`.trim(),
+          apoderado: $("#insn-apo").value.trim(),
+          genero: $("#insn-gen").value,
+          fechaNacimiento: fecV,
+          email: $("#insn-email").value.trim(),
+          telefono: $("#insn-tel").value.trim(),
+        },
+      });
+      mostrarMensaje("Estudiante inscrito en la actividad");
+      alRefrescar();
+    } catch (err) { mostrarMensaje(err.message); }
+  };
 }
 
 async function cargarCarteleraEn(sel) {
   const div = $(sel);
   if (div.innerHTML) { div.classList.toggle("oculta"); return; }
   const act = await API.actividades();
+
+  // Cartelera solo informativa: lista de actividades disponibles,
+  // generalizadas por nombre (la BD repite el mismo nombre en varias filas).
+  // La inscripcion de estudiantes y la participacion en torneos se hace en
+  // los bloques dedicados, y el torneo valida los requisitos al inscribir.
+  const vistos = new Set();
+  const lista = [];
+  for (const a of act) {
+    const clave = String(a.nombre || "").toLowerCase();
+    if (vistos.has(clave)) continue;
+    vistos.add(clave);
+    lista.push({ nombre: a.nombre, area: a.area });
+  }
+  lista.sort((x, y) => String(x.nombre).localeCompare(String(y.nombre), "es"));
+
   div.innerHTML = `<div class="grid-2 cartelera-f">
       <div class="campo"><label>Buscar actividad</label><input id="cart-buscar" placeholder="Por nombre o area..." autocomplete="off"></div>
       <div class="campo"><label>Area</label><select id="cart-area"><option value="">Todas las areas</option><option value="Deportiva">Deportiva</option><option value="Artistico/Cultural">Artistico / Cultural</option></select></div>
-    </div><div id="cart-items">${act.map((a) => {
-    const ahora = new Date();
-    const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
-    const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
-    const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
-    const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
-    const puedeInscribir = abierta && dentroVentana;
-    return `<div class="tarjeta" data-busq="${esc((a.nombre + " " + a.area).toLowerCase())}" data-area="${esc(a.area)}"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3>
-    <p class="muted">Categorias: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}${a.limiteInscritos ? ` | Cupos: ${a.limiteInscritos}` : ""}${a.edadMinima || a.edadMaxima ? ` | Edad: ${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios` : ""}</p>
-    <p class="muted"><span class="estado ${puedeInscribir ? "est-activo" : "est-cancelado"}">${puedeInscribir ? "Inscripciones Abiertas" : "Cerrada"}</span>
-    ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
-    <div class="seccion">
-      ${puedeInscribir ? `<button class="btn btn-mini" data-ins-act="${a._id}">Inscribir</button>` : ""}
-      <button class="btn btn-mini" data-ver-part="${a._id}">Ver Participantes</button>
-    </div>
-    <div id="form-act-${a._id}" class="oculta campo">
-      <label>Categoria</label>${comboHtml(`div-${a._id}-txt`, "Buscar categoria...")}<input type="hidden" id="div-${a._id}">
-      <div id="form-post-${a._id}" class="oculta">
-        <div class="grid-2">
-          <div class="campo"><label>RUT</label><input data-pp-rut="${a._id}" autocomplete="off"></div>
-          <div class="campo"><label>Nombres</label><input data-pp-nom="${a._id}" autocomplete="off"></div>
-          <div class="campo"><label>Apellidos</label><input data-pp-ape="${a._id}" autocomplete="off"></div>
-          <div class="campo"><label>Genero</label><select data-pp-gen="${a._id}"><option value="M">Masculino</option><option value="F">Femenino</option></select></div>
-          <div class="campo"><label>Fecha nacimiento</label><input type="date" data-pp-fec="${a._id}"></div>
-          <div class="campo"><label>Edad (automatica)</label><input data-pp-edad="${a._id}" readonly></div>
-        </div>
-        <button class="btn btn-ok btn-mini" data-aceptar-post="${a._id}">Aceptar</button>
-      </div>
-    </div>
-    <div id="part-${a._id}" class="oculta tarjeta-tor"></div></div>`;
-    }).join("")}</div>`;
+    </div><div id="cart-items">${
+      lista.length
+        ? lista.map((a) => `<div class="tarjeta" data-busq="${esc((a.nombre + " " + a.area).toLowerCase())}" data-area="${esc(a.area)}"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3></div>`).join("")
+        : "<p class='muted'>No hay actividades publicadas.</p>"
+    }</div>`;
   const cartBuscar = $("#cart-buscar");
   const cartArea = $("#cart-area");
   const itemsCart = $("#cart-items");
@@ -2142,65 +2655,6 @@ async function cargarCarteleraEn(sel) {
   if (cartBuscar) cartBuscar.oninput = filtrarCart;
   if (cartArea) cartArea.onchange = filtrarCart;
   div.classList.remove("oculta");
-  let nomina = await API.nomina().catch(() => ({ alumnos: [] }));
-  const renderPart = (id) => {
-    const cont = $(`#part-${id}`);
-    if (!cont) return;
-    const lista = (nomina.alumnos || []).filter((x) => String(x.actividad && x.actividad._id) === String(id));
-    cont.innerHTML = lista.length
-      ? `<table><thead><tr><th>RUT</th><th>Nombre</th><th>Categoria</th></tr></thead>
-         <tbody>${lista.map((x) => `<tr><td>${esc(x.rut)}</td><td>${esc(x.nombre)}</td><td>${esc(x.division)}</td></tr>`).join("")}</tbody></table>`
-      : "<p class='muted'>Sin participantes registrados.</p>";
-    cont.classList.toggle("oculta");
-  };
-  div.querySelectorAll("[data-ins-act]").forEach((b) => b.onclick = () => $(`#form-act-${b.dataset.insAct}`).classList.toggle("oculta"));
-  div.querySelectorAll("[data-ver-part]").forEach((b) => b.onclick = () => renderPart(b.dataset.verPart));
-  act.forEach((a) => {
-    if (!a.divisiones || !a.divisiones.length) return;
-    initCombo(`div-${a._id}-txt`, a.divisiones.map((d) => ({ valor: d, texto: d })), (o) => {
-      $(`#div-${a._id}`).value = o.valor;
-      const fp = $(`#form-post-${a._id}`);
-      if (fp) fp.classList.remove("oculta");
-    }, "Buscar categoria...");
-  });
-  div.querySelectorAll("[data-pp-fec]").forEach((f) => f.addEventListener("input", () => {
-    const id = f.dataset.ppFec;
-    const nac = new Date(f.value);
-    const hoy = new Date();
-    let edad = hoy.getFullYear() - nac.getFullYear();
-    const m = hoy.getMonth() - nac.getMonth();
-    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
-    const campo = document.querySelector(`[data-pp-edad="${id}"]`);
-    if (campo) campo.value = f.value && Number.isFinite(edad) ? `${edad} anio(s)` : "";
-  }));
-  div.querySelectorAll("[data-aceptar-post]").forEach((b) => b.onclick = async () => {
-    const id = b.dataset.aceptarPost;
-    const divTxt = document.querySelector(`#div-${id}-txt`).value.trim();
-    const division = $(`#div-${id}`).value || divTxt;
-    const rut = document.querySelector(`[data-pp-rut="${id}"]`).value.trim();
-    const nom = document.querySelector(`[data-pp-nom="${id}"]`).value.trim();
-    const ape = document.querySelector(`[data-pp-ape="${id}"]`).value.trim();
-    const gen = document.querySelector(`[data-pp-gen="${id}"]`).value;
-    const fec = document.querySelector(`[data-pp-fec="${id}"]`).value;
-    if (!division) { mostrarMensaje("Seleccione la categoria primero"); return; }
-    if (!rut || !nom || !fec) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
-    try {
-      await API.peticion("POST", "/api/inscripciones/postular", {
-        actividad: id,
-        division,
-        alumno: { rut, nombre: `${nom} ${ape}`.trim(), genero: gen, fechaNacimiento: fec },
-      });
-      mostrarMensaje("Postulante agregado a la nomina");
-      nomina = await API.nomina().catch(() => nomina);
-      document.querySelector(`[data-pp-rut="${id}"]`).value = "";
-      document.querySelector(`[data-pp-nom="${id}"]`).value = "";
-      document.querySelector(`[data-pp-ape="${id}"]`).value = "";
-      document.querySelector(`[data-pp-fec="${id}"]`).value = "";
-      document.querySelector(`[data-pp-edad="${id}"]`).value = "";
-      const contPart = $(`#part-${id}`);
-      if (contPart && !contPart.classList.contains("oculta")) renderPart(id);
-    } catch (err) { mostrarMensaje(err.message); }
-  });
 
   // Torneos programados (admin definio fechas/requisitos) visibles para inscribirse.
   const tor = await API.torneos().catch(() => []);
@@ -2253,51 +2707,131 @@ async function panelCoordLectores() {
   };
 }
 
-async function panelCoordInscribir() {
-  const [ins, tor] = await Promise.all([API.inscripciones(), API.torneos().catch(() => [])]);
-  const torAbiertos = tor.filter((t) => {
-    if (["suspendido", "cancelado", "finalizado"].includes(t.estado)) return false;
-    return true;
+// ============================================================
+// Mis inscripciones: tabla + checklist de participantes. El coordinador
+// marca, alumno por alumno, quienes de la inscripcion quieren jugar el
+// torneo que corresponde a su actividad/categoria.
+// Se usa en Postulaciones y en el dashboard del coordinador.
+// ============================================================
+function bloqueMisInscripcionesHtml(ins) {
+  return `<div class="postula-ins tarjeta">
+          <h3>Mis Inscripciones</h3>
+          <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
+          <tbody>${ins.length
+            ? ins.map((i) => `<tr>
+            <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
+            <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
+            <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
+          </tr>`).join("")
+            : `<tr><td colspan="4" class="muted">Todavia no tienes inscripciones.</td></tr>`}</tbody></table>
+          <div id="participacion-c" style="margin-top:12px"></div>
+        </div>`;
+}
+
+function enlazarMisInscripciones(ins, alRefrescar) {
+  document.querySelectorAll("[data-retract]").forEach((b) => {
+    b.onclick = async () => {
+      try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); alRefrescar(); }
+      catch (err) { mostrarMensaje(err.message); }
+    };
   });
-  const opcionesTorneo = torAbiertos.map((t) => `<option value="${t._id}">${esc(t.nombre)}</option>`).join("");
-  const opAsocTor = torAbiertos.map((t) => ({ valor: String(t._id), texto: t.nombre }));
+  cargarParticipacion("#participacion-c", alRefrescar);
+}
+
+// Carga la participacion (torneo coincidente + alumnos marcados) de las
+// inscripciones del coordinador y dibuja un checklist por inscripcion.
+async function cargarParticipacion(selector, alRefrescar) {
+  const cont = $(selector);
+  if (!cont) return;
+  try {
+    const res = await API.participaciones();
+    const datos = res.datos || [];
+    if (!datos.some((d) => d.torneo)) {
+      cont.innerHTML = `<p class="muted">No hay inscripciones con un torneo programado de esa actividad y categoria.</p>`;
+      return;
+    }
+    cont.innerHTML = datos
+      .filter((d) => d.torneo)
+      .map((d) => tarjetaParticipacionHtml(d))
+      .join("");
+    cont.querySelectorAll("[data-participa]").forEach((cb) => {
+      cb.onchange = async () => {
+        const insId = cb.dataset.participa;
+        const aId = cb.dataset.alumno;
+        const participa = cb.checked;
+        cb.disabled = true;
+        try {
+          await API.marcarParticipacion(insId, aId, participa);
+          const etiqueta = cb.parentElement.querySelector(".parti-badge");
+          if (etiqueta) etiqueta.remove();
+          if (participa) {
+            const nueva = document.createElement("span");
+            nueva.className = "parti-badge";
+            nueva.textContent = "participa";
+            cb.parentElement.appendChild(nueva);
+          }
+          mostrarMensaje(participa ? "Estudiante marcado para participar" : "Estudiante retirado del torneo");
+        } catch (err) {
+          cb.checked = !participa;
+          mostrarMensaje(err.message);
+        } finally {
+          cb.disabled = false;
+        }
+      };
+    });
+  } catch (err) {
+    cont.innerHTML = `<p class="muted">No se pudo cargar la participacion: ${esc(err.message)}</p>`;
+  }
+}
+
+function tarjetaParticipacionHtml(d) {
+  const t = d.torneo;
+  const alumnos = d.alumnos || [];
+  if (!d.puedePostular) {
+    return `<div class="parti-tarjeta">
+        <div class="parti-titulo"><strong>${esc(d.inscripcion.actividad ? d.inscripcion.actividad.nombre : "-")} / ${esc(d.inscripcion.division)}</strong>
+        <span class="muted">Torneo: ${esc(t.nombre)}</span></div>
+        <p class="muted" style="margin-top:4px">${esc(d.motivo)}</p>
+        ${alumnos.length ? `<p class="muted">Inscritos en la nomina: ${alumnos.map((a) => esc(a.nombre)).join(", ")}.</p>` : ""}
+      </div>`;
+  }
+  const celdas = alumnos.length
+    ? alumnos
+        .map(
+          (a) => `<label class="parti-alumno">
+            <input type="checkbox" data-participa="${d.inscripcion._id}" data-alumno="${a._id}" ${a.participa ? "checked" : ""}>
+            <span>${esc(a.nombre)}</span>${a.participa ? '<span class="parti-badge">participa</span>' : ""}
+          </label>`
+        )
+        .join("")
+    : `<p class="muted">Esta inscripcion no tiene alumnos en la nomina.</p>`;
+  return `<div class="parti-tarjeta">
+      <div class="parti-titulo"><strong>${esc(d.inscripcion.actividad ? d.inscripcion.actividad.nombre : "-")} / ${esc(d.inscripcion.division)}</strong>
+      <span>Torneo: <em>${esc(t.nombre)}</em></span></div>
+      <p style="margin-top:4px">Marca quiénes quieren participar:</p>
+      <div class="parti-lista">${celdas}</div>
+    </div>`;
+}
+
+async function panelCoordInscribir() {
+  const ins = await API.inscripciones().catch(() => []);
   contenido(
     `<h2 class="pagina">Postulaciones</h2>
      <div class="postula-fila">
        <div class="postula-cartelera">
-         <h3>Cartelera de Actividades</h3>
+         <div class="cabeza-panel">
+           <h3>Cartelera de Actividades</h3>
+           ${bloqueInscribirNuevoHtml()}
+         </div>
+         ${formInscribirNuevoHtml()}
          <div id="cartelera-c"></div>
        </div>
-       <div class="postula-ins tarjeta">
-         <h3>Mis Inscripciones</h3>
-         <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
-         <tbody>${ins.map((i) => `<tr>
-           <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
-           <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
-           <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
-         </tr>`).join("")}</tbody></table>${opcionesTorneo ? `<div class="campo" style="margin-top:12px"><label>Asociar al Torneo (requisitos validados)</label>
-         <div class="seccion"><select id="asoc-ins"></select>${comboHtml("asoc-tor-txt", "Buscar torneo...")}<input type="hidden" id="asoc-tor">
-         <button class="btn btn-ok btn-mini" id="btn-asoc-tor">Asociar</button></div></div>` : ""}
-       </div>
+       ${bloqueMisInscripcionesHtml(ins)}
      </div>`
   );
   cargarCarteleraEn("#cartelera-c");
-  document.querySelectorAll("[data-retract]").forEach((b) => {
-    b.onclick = async () => { try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); panelCoordInscribir(); } catch (err) { mostrarMensaje(err.message); } };
-  });
-  initCombo("asoc-tor-txt", opAsocTor, (o) => { $("#asoc-tor").value = o.valor; }, "Buscar torneo...");
-  const selAsocIns = $("#asoc-ins");
-  if (selAsocIns) {
-    const aceptadas = ins.filter((i) => i.estado === "aceptada");
-    selAsocIns.innerHTML = aceptadas.map((i) => `<option value="${i._id}">${esc(i.actividad ? i.actividad.nombre : "-")} - ${esc(i.division)}</option>`).join("") || "<option value=''>Sin inscripciones aceptadas</option>";
-    $("#btn-asoc-tor").onclick = async () => {
-      try {
-        const res = await API.asociarTorneo(selAsocIns.value, $("#asoc-tor").value);
-        mostrarMensaje("Inscripcion asociada al torneo\n" + (res.inscripcion && res.inscripcion.torneo || ""));
-        panelCoordInscribir();
-      } catch (err) { mostrarMensaje(err.message); }
-    };
-  }
+  enlazarMisInscripciones(ins, () => panelCoordInscribir());
+  await enlazarInscribirNuevo(() => panelCoordInscribir());
 }
 
 { /* notas de soporte para agregar alumnos dentro del panel coordinador */ }
@@ -2338,7 +2872,7 @@ async function panelCoordTorneos() {
     ].filter(Boolean).join(" | ");
 
     return `<div class="tarjeta">
-      <h3>${esc(t.nombre)} <span class="badge-rol">${esc(division)}</span> <span class="badge-rol">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span></h3>
+      <h3>${esc(t.nombre)} <span class="badge-rol">${esc(division)}</span> <span class="badge-rol badge-formato-${t.formato === "competitivo" ? "competitivo" : "amistoso"}">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span></h3>
       <p class="muted">Actividad: ${esc(actNombre)} | ${esc(aYTxt)} | Postulados de mi establecimiento: ${t.postulados ?? yaPostulados.length}</p>
       <div class="grid-2">
         <div class="campo">
@@ -2568,7 +3102,13 @@ async function panelLectorResumen() {
     `<div class="encabezado"><h2 class="pagina">Vista de Solo Lectura</h2><p class="muted">Perfil Lector - no puede modificar datos.${establecimiento ? ` | Establecimiento: ${esc(establecimiento)}` : ""}</p></div>
      <div class="tarjeta"><h3>Torneos Vigentes</h3>
        ${torneosVigentes.length
-         ? torneosVigentes.map((t) => `<div class="cambio-torneo">${formatearEstado(t.estado)} <strong>${esc(t.nombre)}</strong> <span class="muted">${esc(t.actividad ? t.actividad.nombre : "")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</span></div>`).join("")
+         ? torneosVigentes.map((t) => `<div class="cambio-torneo tor-fila">
+              <div class="tor-fila-info">
+                <div>${formatearEstado(t.estado)} <strong>${esc(t.nombre)}</strong></div>
+                <div class="muted">${esc(t.actividad ? t.actividad.nombre : "")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</div>
+              </div>
+              <button class="btn btn-mini" data-llaves="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa</button>
+            </div>`).join("")
          : "<p class='muted'>No hay torneos vigentes.</p>"}
      </div>
      <div class="tarjeta"><h3>Cartelera de Actividades</h3>
@@ -2582,6 +3122,9 @@ async function panelLectorResumen() {
          : "<p class='muted'>No hay actividades publicadas.</p>"}
      </div>`
   );
+  document.querySelectorAll("[data-llaves]").forEach((b) => {
+    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
+  });
 }
 
 // Nomina del propio establecimiento: estudiantes con la actividad en que participan.

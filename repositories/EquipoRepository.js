@@ -109,6 +109,22 @@ class EquipoRepository {
     return equipo;
   }
 
+  reemplazarIntegrantes(id, alumnoIds = []) {
+    const bd = obtenerConexion();
+    const ids = alumnoIds
+      .map((a) => idDe(a))
+      .filter((v) => v !== null && v !== undefined);
+    const borrar = bd.prepare(`DELETE FROM equipo_alumnos WHERE equipo = ?`);
+    const insertar = bd.prepare(
+      `INSERT OR IGNORE INTO equipo_alumnos (equipo, alumno) VALUES (?,?)`
+    );
+    bd.transaction(() => {
+      borrar.run(id);
+      for (const alumnoId of ids) insertar.run(id, alumnoId);
+    })();
+    return this.obtenerPorId(id);
+  }
+
   eliminar(id) {
     const bd = obtenerConexion();
     const r = bd.prepare(`DELETE FROM equipos WHERE id = ?`).run(id);

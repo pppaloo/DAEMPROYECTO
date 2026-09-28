@@ -8,28 +8,46 @@ class NotificacionController {
 
   async listar(req, res) {
     try {
-      const [notificaciones, noLeidas] = await Promise.all([
+      const [notificaciones, pendientes] = await Promise.all([
         this.#service.listar(req.usuario._id),
-        this.#service.noLeidas(req.usuario._id),
+        this.#service.noDescartadas(req.usuario._id),
       ]);
-      res.json({ notificaciones, noLeidas });
+      res.json({ notificaciones, pendientes });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
   }
 
-  async marcarLeida(req, res) {
+  async descartar(req, res) {
     try {
-      const n = await this.#service.marcarLeida(req.params.id, req.usuario._id);
+      const r = await this.#service.descartar(req.params.id, req.usuario._id);
+      res.json(r);
+    } catch (err) {
+      res.status(400).json({ error: err.message });
+    }
+  }
+
+  async descartarTodas(req, res) {
+    try {
+      const r = await this.#service.descartarTodas(req.usuario._id);
+      res.json(r);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  }
+
+  async restaurar(req, res) {
+    try {
+      const n = await this.#service.restaurar(req.params.id, req.usuario._id);
       res.json(n);
     } catch (err) {
       res.status(400).json({ error: err.message });
     }
   }
 
-  async marcarTodasLeidas(req, res) {
+  async restaurarTodas(req, res) {
     try {
-      const r = await this.#service.marcarTodasLeidas(req.usuario._id);
+      const r = await this.#service.restaurarTodas(req.usuario._id);
       res.json(r);
     } catch (err) {
       res.status(500).json({ error: err.message });

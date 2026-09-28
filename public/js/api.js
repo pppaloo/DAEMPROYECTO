@@ -105,14 +105,17 @@ const API = {
   async tabla(id) { return this.peticion("GET", `/api/torneos/${id}/tabla`); },
   async equipos(id) { return this.peticion("GET", `/api/torneos/${id}/equipos`); },
   async poolEquipos(id) { return this.peticion("GET", `/api/torneos/${id}/equipos/pool`); },
-  async sortearEquipos(id, cantidad) {
-    return this.peticion("POST", `/api/torneos/${id}/equipos/sortear`, { cantidad });
+  async sortearEquipos(id, equipos) {
+    return this.peticion("POST", `/api/torneos/${id}/equipos/sortear`, { equipos });
   },
   async crearEquipo(id, datos) {
     return this.peticion("POST", `/api/torneos/${id}/equipos`, datos);
   },
   async eliminarEquipo(id, equipoId) {
     return this.peticion("DELETE", `/api/torneos/${id}/equipos/${equipoId}`);
+  },
+  async actualizarEquipo(id, equipoId, datos) {
+    return this.peticion("PUT", `/api/torneos/${id}/equipos/${equipoId}`, datos);
   },
   async registrarResultadoLlave(llaveId, datos) {
     return this.peticion("POST", `/api/resultados/llaves/${llaveId}`, datos);
@@ -129,6 +132,11 @@ const API = {
     return this.peticion("POST", `/api/inscripciones/${inscripcionId}/alumnos`, datos);
   },
   async nomina() { return this.peticion("GET", "/api/inscripciones/nomina"); },
+  async inscribirAlumno(datos) { return this.peticion("POST", "/api/inscripciones/postular", datos); },
+  async participaciones() { return this.peticion("GET", "/api/inscripciones/participacion/todas"); },
+  async marcarParticipacion(inscripcionId, alumnoId, participa) {
+    return this.peticion("POST", `/api/inscripciones/${inscripcionId}/participacion`, { alumnoId, participa });
+  },
   async torneosPostulables() { return this.peticion("GET", "/api/inscripciones/torneos/postulables"); },
   async torneoPostulados(torneoId) { return this.peticion("GET", `/api/inscripciones/torneos/${torneoId}/postulados`); },
   async postularTorneo(torneoId, datos) { return this.peticion("POST", `/api/inscripciones/torneos/${torneoId}/postular`, datos); },
@@ -152,8 +160,10 @@ const API = {
 
   async catalogos() { return this.peticion("GET", "/api/catalogos"); },
 
-  // Notificaciones (campana) para el coordinador: listado + marcar leidas.
+  // Notificaciones: historial + quitar/restaurar del dashboard.
   async notificaciones() { return this.peticion("GET", "/api/notificaciones"); },
-  async marcarNotificacionLeida(id) { return this.peticion("POST", `/api/notificaciones/${id}/leer`); },
-  async marcarTodasNotificacionesLeidas() { return this.peticion("POST", "/api/notificaciones/leer-todas"); },
+  async descartarNotificacion(id) { return this.peticion("POST", `/api/notificaciones/${id}/descartar`); },
+  async descartarTodasNotificaciones() { return this.peticion("POST", "/api/notificaciones/descartar-todas"); },
+  async restaurarNotificacion(id) { return this.peticion("POST", `/api/notificaciones/${id}/restaurar`); },
+  async restaurarTodasNotificaciones() { return this.peticion("POST", "/api/notificaciones/restaurar-todas"); },
 };

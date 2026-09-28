@@ -31,6 +31,7 @@ router.post("/:id/bracket", autorizarRol("admin"), (req, res) => controller.ejec
 router.post("/:id/equipos/sortear", autorizarRol("admin"), (req, res) => equipos.sortear(req, res));
 router.post("/:id/equipos", autorizarRol("admin"), (req, res) => equipos.crear(req, res));
 router.delete("/:id/equipos/:equipoId", autorizarRol("admin"), (req, res) => equipos.eliminar(req, res));
+router.put("/:id/equipos/:equipoId", autorizarRol("admin"), (req, res) => equipos.actualizar(req, res));
 router.post("/:id/posiciones", autorizarRol("admin"), (req, res) =>
   controller.registrarPosiciones(req, res)
 );

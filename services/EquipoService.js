@@ -138,8 +138,9 @@ class EquipoService {
     });
   }
 
-  // Distribuye automaticamente a los inscritos en N equipos balanceados.
-  async sortear(torneoId, { cantidad }) {
+  // Forma exactamente `equipos` equipos con todos los estudiantes del pool:
+  // el tamano minimo por equipo y la cantidad de sobrantes se derivan solos.
+  async sortear(torneoId, { equipos = 2 } = {}) {
     const torneo = await this.#torneos.obtenerPorId(torneoId);
     if (!torneo) throw new Error("Torneo no encontrado");
     const pool = await this.obtenerPool(torneoId);
@@ -149,10 +150,15 @@ class EquipoService {
       );
     }
 
-    const n = Math.max(2, parseInt(cantidad, 10) || 2);
-    if (n > pool.length) {
-      throw new Error(`No puede crear ${n} equipos con solo ${pool.length} estudiantes`);
+    const n = Math.max(1, parseInt(equipos, 10) || 2);
+    if (n * 2 > pool.length) {
+      throw new Error(
+        `Con ${n} equipos se necesitan al menos ${n * 2} estudiantes disponibles (hay ${pool.length})`
+      );
     }
+    const porEquipo = Math.floor(pool.length / n);
+    const repartidos = Math.min(pool.length, n * porEquipo);
+    const sobrantes = pool.length - repartidos;
 
     // Orden alfabetico: los equipos no llevan numeros, se nombran con una
     // letra del abecedario (Equipo A, Equipo B, ...).
@@ -162,12 +168,17 @@ class EquipoService {
       nombre: `Equipo ${String.fromCharCode(65 + i)}`,
       alumnos: [],
     }));
-    base.forEach((a, idx) => torque[idx % n].alumnos.push(a.id));
+    base.slice(0, repartidos).forEach((a, idx) => torque[idx % n].alumnos.push(a.id));
 
     await this.#eliminarPorTorneo(torneoId);
     const creados = [];
     for (const t of torque) creados.push(await this.#equipos.crear(t));
-    return this.#equipos.obtenerPorTorneo(torneoId).map(aEquipo);
+    return {
+      equipos: this.#equipos.obtenerPorTorneo(torneoId).map(aEquipo),
+      porEquipo,
+      totalEquipos: n,
+      sobrantes,
+    };
   }
 
   // Crea un equipo manual con estudiantes seleccionados del pool.
@@ -189,6 +200,28 @@ class EquipoService {
 
   async listar(torneoId) {
     return this.#equipos.obtenerPorTorneo(torneoId).map(aEquipo);
+  }
+
+  // Actualiza los integrantes de un equipo: se pueden quitar alumnos actuales
+  // y agregar nuevos solo si estan disponibles en el pool del torneo.
+  async actualizar(torneoId, equipoId, { alumnos = [] }) {
+    const torneo = await this.#torneos.obtenerPorId(torneoId);
+    if (!torneo) throw new Error("Torneo no encontrado");
+    const equipo = await this.#equipos.obtenerPorId(equipoId);
+    if (!equipo || String(equipo.torneo?._id || equipo.torneo) !== String(torneoId)) {
+      throw new Error("Equipo no encontrado en este torneo");
+    }
+
+    const pool = await this.obtenerPool(torneoId);
+    const disponibles = new Set(pool.map((a) => String(a.id)));
+    (equipo.alumnos || []).forEach((a) => disponibles.add(String(a.id)));
+    const ids = (Array.isArray(alumnos) ? alumnos : [])
+      .filter((id) => disponibles.has(String(id)))
+      .map((id) => String(id));
+    if (!ids.length) throw new Error("El equipo debe quedar con al menos 1 estudiante disponible");
+
+    const doc = this.#equipos.reemplazarIntegrantes(equipoId, ids);
+    return aEquipo(doc);
   }
 
   async eliminar(torneoId, equipoId) {

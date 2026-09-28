@@ -20,6 +20,14 @@ router.get("/torneos/:torneoId/postulados", autorizarRol("coordinador", "admin")
 router.post("/torneos/:torneoId/postular", autorizarRol("coordinador", "admin"), (req, res) =>
   controller.postularTorneo(req, res)
 );
+// Participacion por alumno: el coordinador marca quien quiere jugar el torneo
+// que corresponde a la actividad/categoria de la inscripcion.
+router.get("/participacion/todas", autorizarRol("admin", "coordinador"), (req, res) =>
+  controller.participacion(req, res)
+);
+router.post("/:id/participacion", autorizarRol("admin", "coordinador"), (req, res) =>
+  controller.marcarParticipacion(req, res)
+);
 router.get("/:id", autorizarRol("admin", "coordinador"), (req, res) => controller.obtenerPorId(req, res));
 
 router.post("/", autorizarRol("coordinador", "admin"), (req, res) => controller.crear(req, res));

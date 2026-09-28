@@ -2,7 +2,8 @@ const { obtenerConexion } = require("../db/conexion");
 const { nowISO } = require("../db/util");
 
 // Los repos no cubren notificaciones: se accede directo con SQL. El output
-// replica el shape de Mongoose (leida booleano) y agrega _id para el front.
+// replica el shape de Mongoose y agrega _id para el front. No se expone
+// `leida`: ese estado ya no existe en la UI, solo importa `descartada`.
 function aNotificacion(f) {
   if (!f) return null;
   return {
@@ -12,7 +13,7 @@ function aNotificacion(f) {
     tipo: f.tipo,
     torneo: f.torneo,
     mensaje: f.mensaje,
-    leida: !!f.leida,
+    descartada: !!f.descartada,
     refNombre: f.refNombre,
     fechaCreacion: f.fechaCreacion,
     createdAt: f.createdAt,
@@ -65,46 +66,69 @@ class NotificacionService {
     return creadas;
   }
 
+  // Historial completo: incluye las descartadas y las de eliminacion, para
+  // que el panel funcione como bitacora. El front decide que mostrar.
   async listar(usuarioId) {
     const bd = obtenerConexion();
     return bd
-      .prepare(
-        `SELECT * FROM notificaciones
-          WHERE destinatario = ? AND tipo != 'eliminacion'
-          ORDER BY createdAt DESC`
-      )
+      .prepare(`SELECT * FROM notificaciones WHERE destinatario = ? ORDER BY createdAt DESC`)
       .all(usuarioId)
       .map(aNotificacion);
   }
 
-  async noLeidas(usuarioId) {
+  // Cuantas siguen visibles en el dashboard (contador de la campana). Ya no
+  // importa el estado leida: lo unico que saca una notificacion es descartarla.
+  async noDescartadas(usuarioId) {
     const bd = obtenerConexion();
     const fila = bd
-      .prepare(
-        `SELECT COUNT(*) AS total FROM notificaciones
-          WHERE destinatario = ? AND tipo != 'eliminacion' AND leida = 0`
-      )
+      .prepare(`SELECT COUNT(*) AS total FROM notificaciones WHERE destinatario = ? AND descartada = 0`)
       .get(usuarioId);
     return fila.total;
   }
 
-  async marcarLeida(id, usuarioId) {
+  // Quitar (X): la notificacion sale del dashboard y del contador, sin
+  // borrarla del historial.
+  async descartar(id, usuarioId) {
     const bd = obtenerConexion();
     const r = bd
       .prepare(
-        `UPDATE notificaciones SET leida = 1, updatedAt = ? WHERE id = ? AND destinatario = ?`
+        `UPDATE notificaciones SET leida = 1, descartada = 1, updatedAt = ? WHERE id = ? AND destinatario = ?`
+      )
+      .run(nowISO(), id, usuarioId);
+    if (r.changes === 0) throw new Error("Notificacion no encontrada");
+    return { ok: true };
+  }
+
+  async descartarTodas(usuarioId) {
+    const bd = obtenerConexion();
+    const r = bd
+      .prepare(
+        `UPDATE notificaciones SET leida = 1, descartada = 1, updatedAt = ? WHERE destinatario = ? AND descartada = 0`
+      )
+      .run(nowISO(), usuarioId);
+    return { ok: true, descartadas: r.changes };
+  }
+
+  // Revertir el descarte: la notificacion vuelve a la bandeja y sin leer.
+  async restaurar(id, usuarioId) {
+    const bd = obtenerConexion();
+    const r = bd
+      .prepare(
+        `UPDATE notificaciones SET leida = 0, descartada = 0, updatedAt = ? WHERE id = ? AND destinatario = ?`
       )
       .run(nowISO(), id, usuarioId);
     if (r.changes === 0) throw new Error("Notificacion no encontrada");
     return this.#obtenerPorId(id);
   }
 
-  async marcarTodasLeidas(usuarioId) {
+  async restaurarTodas(usuarioId) {
     const bd = obtenerConexion();
-    bd.prepare(
-      `UPDATE notificaciones SET leida = 1, updatedAt = ? WHERE destinatario = ? AND leida = 0`
-    ).run(nowISO(), usuarioId);
-    return { ok: true };
+    const r = bd
+      .prepare(
+        `UPDATE notificaciones SET leida = 0, descartada = 0, updatedAt = ? WHERE destinatario = ? AND descartada = 1`
+      )
+      .run(nowISO(), usuarioId);
+    return { ok: true, restauradas: r.changes };
   }
 }
 

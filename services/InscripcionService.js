@@ -173,6 +173,159 @@ class InscripcionService {
     return conId(await this.#inscripciones.actualizar(inscripcionId, { torneo: torneoId, grupo: "" }));
   }
 
+  // ============================================================
+  // Participacion por alumno: el coordinador marca, de uno en uno,
+  // que estudiantes de la inscripcion quieren jugar el torneo que
+  // corresponde a su actividad/categoria.
+  // ============================================================
+
+  // El torneo que corresponde a una inscripcion: misma actividad y misma
+  // categoria, y aun disponible para postular. El repo devuelve `actividad`
+  // como objeto aplanado, asi que se normaliza al id.
+  #torneoCorrespondiente(inscripcion) {
+    const bd = obtenerConexion();
+    const actId = inscripcion.actividad && (inscripcion.actividad.id ?? inscripcion.actividad);
+    return bd
+      .prepare(
+        `SELECT t.id, t.nombre, t.estado, t.formato, t.division,
+                t.fechaAperturaInscripcion, t.fechaCierreInscripcion, t.requisitos
+         FROM torneos t
+         WHERE t.actividad = ? AND t.division = ?
+           AND t.estado NOT IN ('suspendido','cancelado','finalizado')
+         ORDER BY t.id DESC`
+      )
+      .all(actId, inscripcion.division);
+  }
+
+  // Si el torneo admite postulaciones ahora mismo, y por que no.
+  #estadoPostulacion(torneo) {
+    if (torneo.estado !== "inscripciones") {
+      return { puede: false, motivo: `El torneo esta en estado "${torneo.estado}"` };
+    }
+    const ahora = new Date();
+    const apertura = fechaValida(torneo.fechaAperturaInscripcion);
+    if (apertura && ahora < apertura) {
+      return { puede: false, motivo: `Las inscripciones abren el ${apertura.toLocaleDateString("es-CL")}` };
+    }
+    const cierre = fechaValida(torneo.fechaCierreInscripcion);
+    if (cierre && ahora > cierre) {
+      return { puede: false, motivo: `Las inscripciones cerraron el ${cierre.toLocaleDateString("es-CL")}` };
+    }
+    return { puede: true, motivo: "" };
+  }
+
+  #validarRequisitos(requisitos, alumno) {
+    const req = requisitos || {};
+    if (!req.activo) return null;
+    const edad = calcularEdadInline(alumno.fechaNacimiento);
+    if (req.edadMinima != null && edad != null && edad < req.edadMinima) {
+      return `El estudiante tiene ${edad} anios, menor a la edad minima del torneo (${req.edadMinima})`;
+    }
+    if (req.edadMaxima != null && edad != null && edad > req.edadMaxima) {
+      return `El estudiante tiene ${edad} anios, mayor a la edad maxima del torneo (${req.edadMaxima})`;
+    }
+    if (req.genero && ["varones", "damas"].includes(req.genero) && alumno.genero && alumno.genero !== "Otro") {
+      const permitido = req.genero === "varones" ? "M" : "F";
+      if (alumno.genero !== permitido) {
+        return `El torneo es solo para ${req.genero === "varones" ? "varones" : "damas"}`;
+      }
+    }
+    return null;
+  }
+
+  #verificarInscripcion(inscripcionId, usuario) {
+    const inscripcion = this.#inscripciones.obtenerPorId(inscripcionId);
+    if (!inscripcion) throw new Error("Inscripcion no encontrada");
+    if (usuario.rol !== "admin" && String(inscripcion.establecimiento.id) !== String(usuario.establecimiento?._id)) {
+      throw new Error("No puede modificar una inscripcion de otro establecimiento");
+    }
+    return inscripcion;
+  }
+
+  // Vista para el front: por cada inscripcion del usuario, el torneo que le
+  // corresponde y que alumnos ya quedan marcados como participantes.
+  participacionPorInscripcion(usuario) {
+    const filtro = usuario.rol === "coordinador" ? { establecimiento: usuario.establecimiento?._id } : {};
+    const inscripciones = this.#inscripciones.obtenerTodos(filtro);
+    const bd = obtenerConexion();
+    return inscripciones.map((ins) => {
+      const candidatos = this.#torneoCorrespondiente(ins);
+      const torneo = candidatos[0] || null;
+      const alumnos = ins.alumnos || [];
+      let marcados = new Set();
+      if (torneo) {
+        for (const a of bd
+          .prepare(`SELECT alumno FROM alumno_torneos WHERE torneo = ?`)
+          .all(torneo.id)) {
+          marcados.add(String(a.alumno));
+        }
+      }
+      const estado = torneo ? this.#estadoPostulacion(torneo) : null;
+      return {
+        inscripcion: conId(ins),
+        torneo: torneo
+          ? {
+              _id: torneo.id,
+              nombre: torneo.nombre,
+              estado: torneo.estado,
+              division: torneo.division,
+            }
+          : null,
+        puedePostular: estado ? estado.puede : false,
+        motivo: estado ? estado.motivo : "No hay torneo con esa actividad y categoria",
+        alumnos: alumnos.map((a) => ({
+          _id: a._id || a.id,
+          id: a.id,
+          rut: a.rut,
+          nombre: a.nombre,
+          genero: a.genero,
+          fechaNacimiento: a.fechaNacimiento,
+          participa: marcados.has(String(a.id)),
+        })),
+      };
+    });
+  }
+
+  // Marca (o desmarca) un alumno de la inscripcion como participante del
+  // torneo que corresponde a su actividad/categoria.
+  marcarParticipacion(inscripcionId, datos, usuario) {
+    const inscripcion = this.#verificarInscripcion(inscripcionId, usuario);
+    if (inscripcion.estado !== "aceptada") {
+      throw new Error("Solo se pueden marcar participantes de una inscripcion aceptada");
+    }
+    const alumnoId = datos.alumnoId;
+    if (!alumnoId) throw new Error("Falta el estudiante");
+
+    const esMiembro = obtenerConexion()
+      .prepare(`SELECT 1 FROM inscripcion_alumnos WHERE inscripcion = ? AND alumno = ?`)
+      .get(inscripcion.id, alumnoId);
+    if (!esMiembro) throw new Error("El estudiante no pertenece a esta inscripcion");
+
+    const bd = obtenerConexion();
+    const participantes = datos.participa !== false;
+
+    // Desmarcar no necesita torneo disponible: siempre se puede sacar.
+    if (!participantes) {
+      const torneo = this.#torneoCorrespondiente(inscripcion)[0];
+      if (!torneo) throw new Error("No hay torneo con esa actividad y categoria");
+      bd.prepare(`DELETE FROM alumno_torneos WHERE alumno = ? AND torneo = ?`).run(alumnoId, torneo.id);
+      return { ok: true, participa: false, torneo: conId({ _id: torneo.id, nombre: torneo.nombre }) };
+    }
+
+    const torneo = this.#torneoCorrespondiente(inscripcion)[0];
+    if (!torneo) throw new Error("No hay torneo con esa actividad y categoria");
+    const estado = this.#estadoPostulacion(torneo);
+    if (!estado.puede) throw new Error(estado.motivo);
+
+    const alumno = this.#alumnos.obtenerPorId(alumnoId);
+    if (!alumno) throw new Error("Estudiante no encontrado");
+    const problema = this.#validarRequisitos(torneo.requisitos, conId(alumno));
+    if (problema) throw new Error(problema);
+
+    bd.prepare(`INSERT OR IGNORE INTO alumno_torneos (alumno, torneo) VALUES (?,?)`).run(alumnoId, torneo.id);
+    return { ok: true, participa: true, torneo: conId({ _id: torneo.id, nombre: torneo.nombre }) };
+  }
+
   async obtenerTodos(usuario, filtro = {}) {
     if (usuario.rol === "coordinador") {
       filtro.establecimiento = usuario.establecimiento?._id;
