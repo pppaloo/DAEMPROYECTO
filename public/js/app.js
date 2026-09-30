@@ -3247,19 +3247,19 @@ function init() {
   $("#btn-volver-reset").onclick = () => { RESET_TOKEN = ""; vistaLoginForma(); };
   $("#btn-salir").onclick = () => { API.limpiar(); mostrarLogin(); };
 
-  if (API.token) {
+  const tokReset = new URLSearchParams(location.search).get("reset");
+
+  if (tokReset) {
+    RESET_TOKEN = tokReset;
+    history.replaceState(null, "", location.pathname);
+    mostrarLogin();
+    mostrarReset();
+  } else if (API.token) {
     API.perfil()
       .then(async () => { await cargarCatalogos(); mostrarDashboard(); })
       .catch(() => { API.limpiar(); mostrarLogin(); });
   } else {
-    const p = new URLSearchParams(location.search);
-    const tok = p.get("reset");
     mostrarLogin();
-    if (tok) {
-      RESET_TOKEN = tok;
-      history.replaceState(null, "", location.pathname);
-      mostrarReset();
-    }
   }
 }
 
