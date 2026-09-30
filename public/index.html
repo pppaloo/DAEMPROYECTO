@@ -28,7 +28,27 @@
         <input type="password" id="login-clave" required />
         <p id="login-error" class="error oculta"></p>
         <button type="submit" class="btn-primario">Ingresar</button>
+        <button type="button" id="btn-olvidar" class="login-enlace">Olvide mi clave</button>
       </form>
+      <div id="recuperar-box" class="login-secundario oculta">
+        <p class="login-subtitulo">Recuperar clave</p>
+        <p class="muted">Ingrese su RUT y le enviaremos un correo con el enlace para crear una clave nueva.</p>
+        <label for="recuperar-rut">RUT</label>
+        <input type="text" id="recuperar-rut" placeholder="Ej: 11111111-1" />
+        <p id="recuperar-msg" class="error oculta"></p>
+        <button type="button" id="btn-ok-recuperar" class="btn-primario">Enviar correo</button>
+        <button type="button" id="btn-volver-recuperar" class="login-enlace">Volver al inicio de sesion</button>
+      </div>
+      <div id="reset-box" class="login-secundario oculta">
+        <p class="login-subtitulo">Crear clave nueva</p>
+        <label for="reset-clave">Nueva clave</label>
+        <input type="password" id="reset-clave" placeholder="Minimo 6 caracteres" />
+        <label for="reset-clave2">Repetir clave</label>
+        <input type="password" id="reset-clave2" />
+        <p id="reset-msg" class="error oculta"></p>
+        <button type="button" id="btn-ok-reset" class="btn-primario">Cambiar clave</button>
+        <button type="button" id="btn-volver-reset" class="login-enlace">Volver al inicio de sesion</button>
+      </div>
       <div class="login-hint">
         Usuarios de ejemplo:<br />
         Admin: <code>11111111-1 / admin123</code><br />
@@ -73,6 +93,6 @@
   </template>
 
   <script src="/js/api.js"></script>
-  <script src="/js/app.js?v=19"></script>
+  <script src="/js/app.js?v=32"></script>
 </body>
 </html>

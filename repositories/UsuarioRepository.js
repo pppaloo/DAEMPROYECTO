@@ -60,7 +60,7 @@ class UsuarioRepository {
         `SELECT u.*, e.nombre AS establecimientoNombre
          FROM usuarios u
          LEFT JOIN establecimientos e ON e.id = u.establecimiento
-         ORDER BY u.nombre`
+         ORDER BY u.updatedAt DESC, u.id DESC`
       )
       .all();
     return filas.map((f) => aplanar("usuarios", f));

@@ -28,7 +28,7 @@ class SeccionRepository {
     }
     const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
     return bd
-      .prepare(`SELECT * FROM secciones ${where} ORDER BY area ASC, nombre ASC`)
+      .prepare(`SELECT * FROM secciones ${where} ORDER BY updatedAt DESC, id DESC`)
       .all(...params)
       .map((f) => aplanar("secciones", f));
   }

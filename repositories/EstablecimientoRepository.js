@@ -23,7 +23,7 @@ class EstablecimientoRepository {
   obtenerTodos() {
     const bd = obtenerConexion();
     return bd
-      .prepare(`SELECT * FROM establecimientos ORDER BY codigo`)
+      .prepare(`SELECT * FROM establecimientos ORDER BY updatedAt DESC, id DESC`)
       .all()
       .map(aplanar.bind(null, "establecimientos"));
   }

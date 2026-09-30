@@ -187,7 +187,7 @@ class AlumnoRepository {
       }
     }
     const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
-    const filas = bd.prepare(`${SELECT_ALUMNO} ${where} ORDER BY a.nombre ASC`).all(...params);
+    const filas = bd.prepare(`${SELECT_ALUMNO} ${where} ORDER BY a.updatedAt DESC, a.id DESC`).all(...params);
     const alumnos = filas.map(aplanarAlumno);
     cargarAdyacentes(bd, alumnos);
     return alumnos;

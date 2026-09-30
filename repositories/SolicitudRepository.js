@@ -106,7 +106,7 @@ class SolicitudRepository {
     const bd = obtenerConexion();
     const { where, params } = construirFiltro(filtro);
     return bd
-      .prepare(`${SQL_SOLICITUDES} ${where} ORDER BY s.createdAt DESC`)
+      .prepare(`${SQL_SOLICITUDES} ${where} ORDER BY s.updatedAt DESC, s.id DESC`)
       .all(...params)
       .map(aSolicitud);
   }

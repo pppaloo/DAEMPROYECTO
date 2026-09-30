@@ -93,7 +93,7 @@ class EquipoRepository {
   obtenerPorTorneo(torneoId) {
     const bd = obtenerConexion();
     const filas = bd
-      .prepare(`SELECT * FROM equipos WHERE torneo = ? ORDER BY nombre ASC`)
+      .prepare(`SELECT * FROM equipos WHERE torneo = ? ORDER BY updatedAt DESC, id DESC`)
       .all(torneoId);
     const equipos = filas.map(aplanarEquipo);
     cargarAlumnos(bd, equipos);

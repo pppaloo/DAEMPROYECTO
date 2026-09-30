@@ -54,7 +54,7 @@ class TorneoRepository {
          FROM torneos t
          JOIN actividades a ON a.id = t.actividad
          ${where}
-         ORDER BY t.anio DESC, t.semestre DESC`
+         ORDER BY t.updatedAt DESC, t.id DESC`
       )
       .all(...params);
     return filas.map((f) => aplanar("torneos", f));

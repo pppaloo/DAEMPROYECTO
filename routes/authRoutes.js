@@ -6,6 +6,8 @@ const router = express.Router();
 const controller = new AuthController();
 
 router.post("/login", (req, res) => controller.login(req, res));
+router.post("/recuperar", (req, res) => controller.recuperar(req, res));
+router.post("/restablecer", (req, res) => controller.restablecer(req, res));
 router.get("/me", autenticar, (req, res) => controller.perfil(req, res));
 
 module.exports = router;

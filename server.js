@@ -19,6 +19,7 @@ const resultadoRoutes = require("./routes/resultadoRoutes");
 const reporteRoutes = require("./routes/reporteRoutes");
 const catalogRoutes = require("./routes/catalogRoutes");
 const notificacionRoutes = require("./routes/notificacionRoutes");
+const verificarRecaptcha = require("./middlewares/recaptcha");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,10 @@ app.use(
   })
 );
 
+// reCAPTCHA v3 en todas las peticiones de escritura de /api (token por
+// cabecera x-recaptcha-token). Se omite si no hay RECAPTCHA_SECRET_KEY.
+app.use("/api", verificarRecaptcha);
+
 app.use("/api/auth", authRoutes);
 app.use("/api/usuarios", usuarioRoutes);
 app.use("/api/establecimientos", establecimientoRoutes);
@@ -53,6 +58,11 @@ app.use("/api/resultados", resultadoRoutes);
 app.use("/api/reportes", reporteRoutes);
 app.use("/api/catalogos", catalogRoutes);
 app.use("/api/notificaciones", notificacionRoutes);
+
+// Clave publica de reCAPTCHA v3 para el frontend ("" si no esta configurada).
+app.get("/api/recaptcha", (req, res) => {
+  res.json({ siteKey: process.env.RECAPTCHA_SITE_KEY || "" });
+});
 
 app.get("/api/health", (req, res) => {
   res.json({

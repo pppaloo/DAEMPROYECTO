@@ -119,7 +119,7 @@ class ActividadRepository {
     }
     const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
     const filas = bd
-      .prepare(`SELECT * FROM actividades ${where} ORDER BY anio DESC, nombre ASC`)
+      .prepare(`SELECT * FROM actividades ${where} ORDER BY updatedAt DESC, id DESC`)
       .all(...params);
     return filas.map((f) => conEncuentros(bd, f));
   }

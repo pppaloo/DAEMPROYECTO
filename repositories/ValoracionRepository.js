@@ -56,7 +56,7 @@ class ValoracionRepository {
          LEFT JOIN actividades a ON a.id = v.actividad
          LEFT JOIN establecimientos e ON e.id = v.establecimiento
          ${where}
-         ORDER BY v.anio DESC, v.semestre DESC`
+         ORDER BY v.updatedAt DESC, v.id DESC`
       )
       .all(...params);
     return filas.map((f) => this.#poblarRefs(f));

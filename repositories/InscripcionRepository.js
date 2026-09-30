@@ -140,7 +140,7 @@ class InscripcionRepository {
     }
     const where = condiciones.length ? `WHERE ${condiciones.join(" AND ")}` : "";
     const filas = bd
-      .prepare(`${SELECT_INSCRIPCION} ${where} ORDER BY i.createdAt DESC`)
+      .prepare(`${SELECT_INSCRIPCION} ${where} ORDER BY i.updatedAt DESC, i.id DESC`)
       .all(...params);
     const inscripciones = filas.map(aplanarInscripcion);
     cargarAlumnos(bd, inscripciones);

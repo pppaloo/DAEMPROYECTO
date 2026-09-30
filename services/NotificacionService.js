@@ -71,7 +71,7 @@ class NotificacionService {
   async listar(usuarioId) {
     const bd = obtenerConexion();
     return bd
-      .prepare(`SELECT * FROM notificaciones WHERE destinatario = ? ORDER BY createdAt DESC`)
+      .prepare(`SELECT * FROM notificaciones WHERE destinatario = ? ORDER BY updatedAt DESC, id DESC`)
       .all(usuarioId)
       .map(aNotificacion);
   }

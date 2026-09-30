@@ -117,6 +117,17 @@ body {
 }
 .login-caja .btn-primario:hover { background: var(--primario-oscuro); }
 .login-hint { margin-top: 20px; font-size: 12px; color: #6b7590; background: #f0f3f9; border-radius: 8px; padding: 12px; line-height: 1.7; }
+.login-enlace {
+  width: 100%; margin-top: 12px; padding: 0; border: none; background: none; text-align: center;
+  color: var(--primario); font-size: 13px; text-decoration: underline; cursor: pointer;
+}
+.login-enlace:hover { color: var(--primario-oscuro); }
+.login-secundario label { display: block; font-size: 13px; margin: 12px 0 4px; font-weight: 600; }
+.login-secundario input {
+  width: 100%; padding: 10px 12px; border: 1px solid var(--borde); border-radius: 8px; font-size: 14px;
+}
+.login-secundario .btn-primario { width: 100%; margin-top: 18px; padding: 12px; }
+.login-subtitulo { font-size: 16px; font-weight: 700; margin: 0 0 6px; }
 .error { color: var(--err); font-size: 13px; margin-top: 8px; }
 
 /* ---------- Dashboard layout ---------- */

@@ -39,8 +39,8 @@ function mostrarMensaje(texto, tipo = "info") {
 }
 
 // ---------- Modal de confirmacion (reemplaza a confirm) ----------
-// Devuelve Promise<boolean>.
-function confirmarMensaje(texto, titulo = "Confirmar") {
+// Devuelve Promise<boolean>. Con `peligro=true` el boton de aceptar es rojo.
+function confirmarMensaje(texto, titulo = "Confirmar", textoSi = "Aceptar", peligro = false) {
   return new Promise((resolver) => {
     const ov = document.createElement("div");
     ov.className = "modal-overlay";
@@ -48,7 +48,7 @@ function confirmarMensaje(texto, titulo = "Confirmar") {
        <h3>${esc(titulo)}</h3>
        <p>${esc(String(texto)).replace(/\n/g, "<br>")}</p>
        <div class="modal-acciones">
-         <button type="button" class="btn btn-ok" data-modal-si>Aceptar</button>
+         <button type="button" class="btn ${peligro ? "btn-err2" : "btn-ok"}" data-modal-si>${esc(textoSi)}</button>
          <button type="button" class="btn btn-mini" data-modal-no>Cancelar</button>
        </div>
      </div>`;
@@ -146,6 +146,8 @@ function cargarCatalogos() {
 }
 
 // ---------- Autenticacion ----------
+let RESET_TOKEN = "";
+
 async function iniciarSesion(rut, clave) {
   await API.login(rut, clave);
   API.usuario = await API.perfil();
@@ -157,6 +159,29 @@ async function iniciarSesion(rut, clave) {
 function mostrarLogin() {
   $("#app-dashboard").classList.add("oculta");
   $("#vista-login").classList.remove("oculta");
+  vistaLoginForma();
+}
+
+function vistaLoginForma() {
+  $("#form-login").classList.remove("oculta");
+  $("#recuperar-box").classList.add("oculta");
+  $("#reset-box").classList.add("oculta");
+}
+
+function mostrarRecuperar() {
+  $("#form-login").classList.add("oculta");
+  $("#reset-box").classList.add("oculta");
+  $("#recuperar-msg").classList.add("oculta");
+  $("#recuperar-box").classList.remove("oculta");
+  $("#recuperar-rut").focus();
+}
+
+function mostrarReset() {
+  $("#form-login").classList.add("oculta");
+  $("#recuperar-box").classList.add("oculta");
+  $("#reset-msg").classList.add("oculta");
+  $("#reset-box").classList.remove("oculta");
+  $("#reset-clave").focus();
 }
 
 function cerrarMenu() {
@@ -181,7 +206,7 @@ function mostrarDashboard() {
   $("#btn-cerrar-menu").onclick = cerrarMenu;
   $("#overlay-menu").onclick = cerrarMenu;
 
-  const conNotis = u && (u.rol === "coordinador" || u.rol === "admin");
+  const conNotis = u && u.rol === "coordinador";
   const camp = $("#btn-campana-side");
   if (camp) {
     camp.classList.toggle("oculta", !conNotis);
@@ -415,15 +440,12 @@ async function panelNotificaciones() {
 }
 
 async function panelAdminResumen() {
-  const [est, act, tor, sol, notifs] = await Promise.all([
+  const [est, act, tor, sol] = await Promise.all([
     API.establecimientos().catch(() => []),
     API.actividades().catch(() => []),
     API.torneos().catch(() => []),
     API.solicitudes().catch(() => []),
-    API.notificaciones().catch(() => ({ notificaciones: [], pendientes: 0 })),
   ]);
-  const listaNotifs = notifs.notificaciones || [];
-  const pendientesNotifs = notifs.pendientes || 0;
 
   const solicitudesPendientes = sol.filter((s) => s.estado === "en_proceso");
 
@@ -482,16 +504,12 @@ async function panelAdminResumen() {
            ${formatearEstado(t.estado)}
            <p class="muted">${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</p>
          </div>`;
-       }).join("") : "<p class='muted'>No hubo cambios de torneos en el ultimo mes.</p>"}
-     </div>
-     ${bloqueNotificacionesHtml(listaNotifs, pendientesNotifs)}`
+}).join("") : "<p class='muted'>No hubo cambios de torneos en el ultimo mes.</p>"}
+      </div>`
   );
 
   $("#btn-admin-sol").onclick = () => navegar("adminSolicitudes");
   $("#btn-admin-agenda").onclick = () => navegar("adminAgenda");
-  const btnHist = document.getElementById("btn-ver-historial-notifs");
-  if (btnHist) btnHist.onclick = () => navegar("notificaciones");
-  notifsEnlazar(() => CargarPanel(panelAdminResumen));
 }
 
 async function panelAdminEstablecimientos() {
@@ -534,6 +552,7 @@ async function panelAdminUsuarios() {
          <div class="campo"><label>Nombre</label><input id="usr-nombre"></div>
          <div class="campo"><label>Rol</label><select id="usr-rol"><option value="coordinador">Coordinador</option><option value="lector">Lector</option></select></div>
          <div class="campo"><label>Clave</label><input id="usr-clave"></div>
+         <div class="campo"><label>Correo</label><input id="usr-correo" type="email"></div>
          <div class="campo"><label>Establecimiento</label>
            ${comboHtml("usr-est-txt", "Buscar establecimiento...")}<input type="hidden" id="usr-est"></div>
        </div>
@@ -554,9 +573,10 @@ async function panelAdminUsuarios() {
        <span id="cont-usr" class="act-buscador-contador">0 usuarios</span>
      </div>
      <p id="usr-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron usuarios.</p>
-     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Rol</th><th>Establecimiento</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr data-busq="${esc((((u.nombre || "") + " " + (u.rut || "") + " " + (u.rol || "") + " " + (u.establecimiento ? (u.establecimiento.nombre || "") : "") + " " + (u.establecimiento ? (u.establecimiento.codigo || "") : "")).toLowerCase()))}" data-rol="${esc(u.rol || "")}" data-est="${esc(u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "")}">
-       <td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? (u.establecimiento.nombre || u.establecimiento) : "-")}</td></tr>`).join("")}</tbody></table></div>`
+     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Rol</th><th>Establecimiento</th><th>Correo</th><th>Acciones</th></tr></thead>
+     <tbody>${usuarios.map((u) => `<tr data-busq="${esc((((u.nombre || "") + " " + (u.rut || "") + " " + (u.rol || "") + " " + (u.email || "") + " " + (u.establecimiento ? (u.establecimiento.nombre || "") : "") + " " + (u.establecimiento ? (u.establecimiento.codigo || "") : "")).toLowerCase()))}" data-rol="${esc(u.rol || "")}" data-est="${esc(u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "")}">
+       <td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? (u.establecimiento.nombre || u.establecimiento) : "-")}</td><td>${esc(u.email || "-")}</td>
+       <td><button class="btn btn-err2 btn-mini" data-elim-usr="${esc(u._id)}" ${u._id === (API.usuario && API.usuario._id) ? "disabled" : ""}>Eliminar</button></td></tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nuevo-usr").onclick = () => $("#form-nuevo-usr").classList.toggle("oculta");
   initCombo("usr-est-txt", opEst, (o) => { $("#usr-est").value = o.valor; }, "Buscar establecimiento...");
@@ -564,11 +584,23 @@ async function panelAdminUsuarios() {
     try {
       await API.crearUsuario({
         rut: $("#usr-rut").value, nombre: $("#usr-nombre").value, rol: $("#usr-rol").value,
-        clave: $("#usr-clave").value, establecimiento: $("#usr-est").value,
+        clave: $("#usr-clave").value, email: $("#usr-correo").value, establecimiento: $("#usr-est").value,
       });
       panelAdminUsuarios();
     } catch (err) { mostrarMensaje(err.message); }
   };
+  document.querySelectorAll("[data-elim-usr]").forEach((b) => {
+    b.onclick = async () => {
+      const fila = b.closest("tr");
+      const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
+      const si = await confirmarMensaje(`¿Eliminar al usuario ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar usuario", "Eliminar", true);
+      if (!si) return;
+      try {
+        await API.eliminarUsuario(b.dataset.elimUsr);
+        panelAdminUsuarios();
+      } catch (err) { mostrarMensaje(err.message); }
+    };
+  });
   const buscarUsr = () => {
     const q = ($("#buscador-usr").value || "").trim().toLowerCase();
     const r = $("#filtro-rol-usr").value;
@@ -774,11 +806,10 @@ async function panelAdminActividades() {
              </div>
              <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
              ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
-             <div class="seccion">
-               <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
-               <button class="btn btn-mini" data-agregar-encuentro="${idA}">Agregar Encuentro</button>
-               <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
-             </div>
+<div class="seccion">
+                <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
+                <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
+              </div>
            </div>
          </div>`;
         }).join("")}
@@ -809,17 +840,6 @@ async function panelAdminActividades() {
       const a = act.find((x) => String(x._id) === String(b.dataset.editarAct));
       if (!a) return;
       abrirFormActividad(a);
-    };
-  });
-  document.querySelectorAll("[data-agregar-encuentro]").forEach((b) => {
-    b.onclick = () => {
-      const fecha = prompt("Fecha del encuentro (AAAA-MM-DD):");
-      if (!fecha) return;
-      const hora = prompt("Hora (HH:MM):");
-      const lugar = prompt("Lugar (opcional):") || "Por definir";
-      API.peticion("POST", `/api/actividades/${b.dataset.agregarEncuentro}/encuentros`, { fecha, hora, lugar })
-        .then(() => { panelAdminActividades(); })
-        .catch((err) => mostrarMensaje(err.message));
     };
   });
   document.querySelectorAll("[data-eliminar-act]").forEach((b) => {
@@ -2500,10 +2520,10 @@ async function panelAdminReportes() {
 // PANELES COORDINADOR
 // ============================================================
 async function panelCoordResumen() {
-  const [nomina, notifs, ins] = await Promise.all([
+  const [nomina, notifs, tor] = await Promise.all([
     API.nomina().catch(() => ({ total: 0, porActividad: [] })),
     API.notificaciones().catch(() => ({ notificaciones: [], pendientes: 0 })),
-    API.inscripciones().catch(() => []),
+    API.torneos().catch(() => []),
   ]);
   const lista = notifs.notificaciones || [];
   const pendientes = notifs.pendientes || 0;
@@ -2521,9 +2541,9 @@ async function panelCoordResumen() {
         </div>
         ${formInscribirNuevoHtml()}
         <div id="cartelera" class="oculta"></div>
-        ${bloqueNotificacionesHtml(lista, pendientes)}
+        ${bloqueTorneosInscripcionHtml(tor)}
       </div>
-      ${bloqueMisInscripcionesHtml(ins)}
+      <div class="postula-ins">${bloqueNotificacionesHtml(lista, pendientes)}</div>
      </div>`
   );
   $("#btn-vercat").onclick = () => cargarCarteleraEn("#cartelera");
@@ -2531,7 +2551,6 @@ async function panelCoordResumen() {
   const btnHistorial = document.getElementById("btn-ver-historial-notifs");
   if (btnHistorial) btnHistorial.onclick = () => navegar("notificaciones");
   notifsEnlazar(() => panelCoordResumen());
-  enlazarMisInscripciones(ins, () => panelCoordResumen());
   await enlazarInscribirNuevo(() => panelCoordResumen());
 }
 
@@ -2622,6 +2641,8 @@ async function cargarCarteleraEn(sel) {
   // generalizadas por nombre (la BD repite el mismo nombre en varias filas).
   // La inscripcion de estudiantes y la participacion en torneos se hace en
   // los bloques dedicados, y el torneo valida los requisitos al inscribir.
+  // El backend entrega las actividades de la mas actualizada a la mas antigua;
+  // la deduplicacion por nombre conserva la fila mas reciente.
   const vistos = new Set();
   const lista = [];
   for (const a of act) {
@@ -2630,7 +2651,6 @@ async function cargarCarteleraEn(sel) {
     vistos.add(clave);
     lista.push({ nombre: a.nombre, area: a.area });
   }
-  lista.sort((x, y) => String(x.nombre).localeCompare(String(y.nombre), "es"));
 
   div.innerHTML = `<div class="grid-2 cartelera-f">
       <div class="campo"><label>Buscar actividad</label><input id="cart-buscar" placeholder="Por nombre o area..." autocomplete="off"></div>
@@ -2655,29 +2675,25 @@ async function cargarCarteleraEn(sel) {
   if (cartBuscar) cartBuscar.oninput = filtrarCart;
   if (cartArea) cartArea.onchange = filtrarCart;
   div.classList.remove("oculta");
+}
 
-  // Torneos programados (admin definio fechas/requisitos) visibles para inscribirse.
-  const tor = await API.torneos().catch(() => []);
-  const torneoAbiertos = tor.filter((t) => {
-    if (["suspendido", "cancelado", "finalizado"].includes(t.estado)) return false;
-    return true;
-  });
-  if (torneoAbiertos.length) {
-    const blocTorneos = document.createElement("div");
-    blocTorneos.innerHTML = `<h3 class="pagina">Torneos con inscripcion</h3>` + torneoAbiertos.map((t) => {
-      const req = t.requisitos || {};
-      const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
-      const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
-      const reqTxt = req.activo
-        ? `Edad ${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"} anios${req.genero ? ` | Solo ${req.genero}` : ""}`
-        : "Sin requisitos";
-      return `<div class="tarjeta"><h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "")}</span></h3>
-      <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
-      <p class="muted">Apertura: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} | Cierre: ${fin ? fin.toLocaleDateString("es-CL") : "-"}</p>
-      <p class="muted">Requisitos: ${esc(reqTxt)}</p></div>`;
-    }).join("");
-    div.appendChild(blocTorneos);
-  }
+// Bloque informativo de torneos con inscripcion abierta (se muestra como
+// seccion propia en el Resumen del coordinador, fuera de la cartelera).
+function bloqueTorneosInscripcionHtml(tor) {
+  const abiertos = (tor || []).filter((t) => !["suspendido", "cancelado", "finalizado"].includes(t.estado));
+  if (!abiertos.length) return "";
+  return `<h3 class="pagina">Torneos con inscripcion</h3>` + abiertos.map((t) => {
+    const req = t.requisitos || {};
+    const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
+    const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
+    const reqTxt = req.activo
+      ? `Edad ${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"} anios${req.genero ? ` | Solo ${req.genero}` : ""}`
+      : "Sin requisitos";
+    return `<div class="tarjeta"><h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "")}</span></h3>
+    <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
+    <p class="muted">Apertura: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} | Cierre: ${fin ? fin.toLocaleDateString("es-CL") : "-"}</p>
+    <p class="muted">Requisitos: ${esc(reqTxt)}</p></div>`;
+  }).join("");
 }
 
 async function panelCoordLectores() {
@@ -2689,22 +2705,36 @@ async function panelCoordLectores() {
          <div class="campo"><label>RUT</label><input id="enc-rut"></div>
          <div class="campo"><label>Nombre</label><input id="enc-nombre"></div>
          <div class="campo"><label>Clave</label><input id="enc-clave"></div>
+         <div class="campo"><label>Correo</label><input id="enc-correo" type="email"></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-enc">Guardar</button>
      </div>
-     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Establecimiento</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td></tr>`).join("")}</tbody></table></div>`
+     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Establecimiento</th><th>Correo</th><th>Acciones</th></tr></thead>
+     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td><td>${esc(u.email || "-")}</td>
+     <td><button class="btn btn-err2 btn-mini" data-elim-enc="${esc(u._id)}">Eliminar</button></td></tr>`).join("")}</tbody></table></div>`
   );
   $("#btn-nuevo-enc").onclick = () => $("#form-nuevo-enc").classList.toggle("oculta");
   $("#btn-guardar-enc").onclick = async () => {
     try {
       await API.crearUsuario({
         rut: $("#enc-rut").value, nombre: $("#enc-nombre").value, rol: "lector",
-        clave: $("#enc-clave").value, establecimiento: API.usuario.establecimiento._id,
+        clave: $("#enc-clave").value, email: $("#enc-correo").value, establecimiento: API.usuario.establecimiento._id,
       });
       panelCoordLectores();
     } catch (err) { mostrarMensaje(err.message); }
   };
+  document.querySelectorAll("[data-elim-enc]").forEach((b) => {
+    b.onclick = async () => {
+      const fila = b.closest("tr");
+      const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
+      const si = await confirmarMensaje(`¿Eliminar al lector ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar lector", "Eliminar", true);
+      if (!si) return;
+      try {
+        await API.eliminarUsuario(b.dataset.elimEnc);
+        panelCoordLectores();
+      } catch (err) { mostrarMensaje(err.message); }
+    };
+  });
 }
 
 // ============================================================
@@ -2964,7 +2994,6 @@ async function panelCoordSolicitudesImpl() {
   const solicitudes = await API.solicitudes();
   const encAlumnos = await API.inscripciones();
   const opAlIns = encAlumnos.filter((i) => i.estado === "aceptada")
-    .sort((a, b) => (a.actividad?.nombre || "").localeCompare(b.actividad?.nombre || "") || (a.division || "").localeCompare(b.division || ""))
     .map((i) => ({ valor: String(i._id), texto: `${i.actividad ? i.actividad.nombre : ""} - ${i.division}` }));
   contenido(
     `<h2 class="pagina">Solicitudes y Estado</h2>
@@ -3164,6 +3193,58 @@ function init() {
       $("#login-error").classList.remove("oculta");
     }
   });
+  $("#btn-olvidar").onclick = () => { mostrarRecuperar(); };
+  $("#btn-volver-recuperar").onclick = () => { vistaLoginForma(); };
+  $("#btn-ok-recuperar").onclick = async () => {
+    $("#recuperar-msg").classList.add("oculta");
+    const rut = $("#recuperar-rut").value.trim();
+    if (!rut) {
+      $("#recuperar-msg").textContent = "Debe ingresar su RUT";
+      $("#recuperar-msg").classList.remove("oculta");
+      return;
+    }
+    try {
+      const r = await API.recuperarClave(rut);
+      $("#recuperar-rut").value = "";
+      $("#recuperar-msg").style.color = "var(--ok, green)";
+      $("#recuperar-msg").textContent = r.mensaje || "Correo enviado.";
+      $("#recuperar-msg").classList.remove("oculta");
+      $("#recuperar-msg").style.color = "";
+    } catch (err) {
+      $("#recuperar-msg").style.color = "";
+      $("#recuperar-msg").textContent = err.message;
+      $("#recuperar-msg").classList.remove("oculta");
+    }
+  };
+  $("#btn-ok-reset").onclick = async () => {
+    $("#reset-msg").classList.add("oculta");
+    const c1 = $("#reset-clave").value;
+    const c2 = $("#reset-clave2").value;
+    if (c1.length < 6) {
+      $("#reset-msg").textContent = "La clave debe tener al menos 6 caracteres";
+      $("#reset-msg").classList.remove("oculta");
+      return;
+    }
+    if (c1 !== c2) {
+      $("#reset-msg").textContent = "Las claves no coinciden";
+      $("#reset-msg").classList.remove("oculta");
+      return;
+    }
+    try {
+      const r = await API.restablecerClave(RESET_TOKEN, c1);
+      RESET_TOKEN = "";
+      $("#reset-msg").style.color = "var(--ok, green)";
+      $("#reset-msg").textContent = r.mensaje || "Clave cambiada.";
+      $("#reset-msg").classList.remove("oculta");
+      $("#reset-msg").style.color = "";
+      setTimeout(vistaLoginForma, 2500);
+    } catch (err) {
+      $("#reset-msg").style.color = "";
+      $("#reset-msg").textContent = err.message;
+      $("#reset-msg").classList.remove("oculta");
+    }
+  };
+  $("#btn-volver-reset").onclick = () => { RESET_TOKEN = ""; vistaLoginForma(); };
   $("#btn-salir").onclick = () => { API.limpiar(); mostrarLogin(); };
 
   if (API.token) {
@@ -3171,7 +3252,14 @@ function init() {
       .then(async () => { await cargarCatalogos(); mostrarDashboard(); })
       .catch(() => { API.limpiar(); mostrarLogin(); });
   } else {
+    const p = new URLSearchParams(location.search);
+    const tok = p.get("reset");
     mostrarLogin();
+    if (tok) {
+      RESET_TOKEN = tok;
+      history.replaceState(null, "", location.pathname);
+      mostrarReset();
+    }
   }
 }
 
