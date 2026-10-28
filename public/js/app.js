@@ -5,6 +5,74 @@
 const $ = (sel) => document.querySelector(sel);
 const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
+// ---------- Parametros de campos: solo letras en nombres, formato RUT y limites ----------
+const MX = { letras: 60, nombre: 80, rut: 12, clave: 10, correo: 40, codigo: 12, telefono: 20 };
+const RE_LETRAS = /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ´.\- ]/g;
+const RE_RUT = /[^\d.kK-]/g;
+const RE_CODIGO = /[^A-Za-z0-9.\- ]/g;
+const RE_TEL = /[^\d+()\-. ]/g;
+
+function tipoDeCampo(el) {
+  if (el.dataset.tipo) return el.dataset.tipo;
+  const id = el.id || "";
+  if (/(^|-)rut$|^n-rut-/.test(id)) return "rut";
+  if (/(^|-)clave$/.test(id)) return "clave";
+  if (/(^|-)correo$|mail$/.test(id)) return "correo";
+  if (/(^|-)codigo$/.test(id)) return "codigo";
+  if (/(^|-)telefono$|tel$/.test(id)) return "telefono";
+  if (/(^|-)nombre$|(^|-)nom$|(^|-)ape$|(^|-)apo$|^n-(nom|ape)-/.test(id)) return "letras";
+  return "";
+}
+
+function normalizarCampo(el) {
+  if (el.readOnly || el.disabled) return;
+  const tipo = tipoDeCampo(el);
+  if (tipo) {
+    if (!el.hasAttribute("maxlength")) el.maxLength = MX[tipo];
+    let v = el.value;
+    if (tipo === "letras" || tipo === "nombre") {
+      v = v.replace(RE_LETRAS, "").slice(0, MX[tipo]).replace(/ {2,}/g, " ");
+    } else if (tipo === "rut") {
+      v = v.replace(RE_RUT, "").slice(0, MX.rut).replace(/k/g, "K");
+    } else if (tipo === "codigo") {
+      v = v.replace(RE_CODIGO, "").slice(0, MX.codigo);
+    } else if (tipo === "telefono") {
+      v = v.replace(RE_TEL, "").slice(0, MX.telefono);
+    } else {
+      v = v.slice(0, MX[tipo]);
+    }
+    if (v !== el.value) el.value = v;
+    if (v.length >= MX[tipo]) {
+      if (el.dataset.avisoLimite !== "1") {
+        el.dataset.avisoLimite = "1";
+        avisarCampo(el, `Maximo ${MX[tipo]} caracteres`);
+      }
+    } else if (el.dataset.avisoLimite === "1") {
+      el.dataset.avisoLimite = "0";
+    }
+  } else if (el.tagName === "INPUT" && !["search", "number", "date", "time", "datetime-local", "hidden"].includes(el.type) && !el.hasAttribute("maxlength")) {
+    el.maxLength = 200;
+  }
+}
+
+let __timerAviso = null;
+function avisarCampo(el, texto) {
+  const viejo = document.querySelector(".campo-aviso");
+  if (viejo) viejo.remove();
+  clearTimeout(__timerAviso);
+  const aviso = document.createElement("div");
+  aviso.className = "campo-aviso";
+  aviso.textContent = texto;
+  const r = el.getBoundingClientRect();
+  aviso.style.left = (r.left + Math.max(0, (r.width - 200) / 2) + window.scrollX) + "px";
+  aviso.style.top = (r.top - 34 + window.scrollY) + "px";
+  document.body.appendChild(aviso);
+  __timerAviso = setTimeout(() => {
+    aviso.style.opacity = "0";
+    setTimeout(() => aviso.remove(), 200);
+  }, 2500);
+}
+
 // Banner verde temporal de exito. Flotante sobre el body para que sobreviva
 // a la recarga interna del panel (#vista-contenido se re-renderiza al guardar).
 let __timerExito = null;
@@ -284,6 +352,8 @@ const MenuPorRol = {
     { clave: "adminSolicitudes", label: "Solicitudes" },
     { clave: "adminValoraciones", label: "Ranking Cumplimiento" },
     { clave: "adminReportes", label: "Reportes" },
+    { clave: "feriados", label: "Feriados" },
+    { clave: "directorio", label: "Directorio MINEDUC" },
   ],
   coordinador: [
     { clave: "coordResumen", label: "Resumen" },
@@ -292,11 +362,14 @@ const MenuPorRol = {
     { clave: "coordTorneos", label: "Postular Torneos" },
     { clave: "coordSolicitudes", label: "Mis Solicitudes" },
     { clave: "coordNomina", label: "Nomina Estudiantes" },
+    { clave: "feriados", label: "Feriados" },
+    { clave: "directorio", label: "Directorio MINEDUC" },
   ],
   lector: [
     { clave: "lectorResumen", label: "Resumen" },
     { clave: "lectorEstudiantes", label: "Estudiantes" },
     { clave: "lectorAgenda", label: "Agenda" },
+    { clave: "feriados", label: "Feriados" },
   ],
 };
 
@@ -322,6 +395,8 @@ const PANELES = {
   lectorResumen: () => CargarPanel(panelLectorResumen),
   lectorEstudiantes: () => CargarPanel(panelLectorEstudiantes),
   lectorAgenda: () => CargarPanel(panelAdminAgenda),
+  feriados: () => CargarPanel(panelFeriados),
+  directorio: () => CargarPanel(panelDirectorio),
 };
 
 async function panelBienvenida() {
@@ -330,6 +405,125 @@ async function panelBienvenida() {
     `<div class="encabezado"><div><h2 class="pagina">Bienvenido/a, ${esc(u.nombre)}</h2><p class="muted">Perfil: ${esc(u.rol)}</p></div></div>
      <div class="tarjeta"><p>Seleccione una opcion del menu lateral para comenzar.</p></div>`
   );
+}
+
+// ============================================================
+// PANELES: APIs EXTERNAS ABIERTAS
+//  - Feriados de Chile (api.boostr.cl / api.roison.cl)
+//  - Directorio Oficial de Establecimientos (Datos Abiertos MINEDUC)
+// ============================================================
+const MESES_ES = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+
+function formatearFechaCL(iso) {
+  const [a, m, d] = String(iso || "").split("-");
+  if (!a || !m || !d) return iso || "";
+  return `${d}/${m}/${a}`;
+}
+
+async function panelFeriados() {
+  const anioActual = new Date().getFullYear();
+  contenido(
+    `<div class="encabezado"><h2 class="pagina">Feriados en Chile</h2></div>
+     <div class="tarjeta">
+       <p class="muted">Consulta los feriados legales de Chile para planificar el calendario de encuentros.</p>
+       <div class="campo" style="max-width:200px"><label>Año</label><input type="number" id="fer-anio" min="2020" max="2030" value="${anioActual}"></div>
+       <button class="btn btn-primario2" id="btn-fer-buscar">Consultar</button>
+       <span class="muted" id="fer-fuente"></span>
+     </div>
+     <div id="fer-proximo"></div>
+     <div id="fer-lista"></div>`
+  );
+  $("#btn-fer-buscar").onclick = () => cargarFeriados($("#fer-anio").value);
+  $("#fer-anio").addEventListener("keydown", (e) => { if (e.key === "Enter") cargarFeriados($("#fer-anio").value); });
+  cargarFeriados(anioActual);
+}
+
+async function cargarFeriados(anio) {
+  const lista = $("#fer-lista");
+  lista.innerHTML = `<div class="mensaje">Cargando feriados...</div>`;
+  $("#fer-proximo").innerHTML = "";
+  $("#fer-fuente").textContent = "";
+  try {
+    const r = await API.feriados(anio);
+    const feriados = r.feriados || [];
+    const hoy = new Date().toISOString().slice(0, 10);
+    const proximo = feriados.find((f) => f.fecha >= hoy);
+    $("#fer-fuente").textContent = feriados.length ? `Fuente: ${r.fuente}` : "";
+    $("#fer-proximo").innerHTML = proximo
+      ? `<div class="tarjeta"><span class="stat"><strong>Proximo feriado</strong><br>${esc(proximo.titulo)} - ${formatearFechaCL(proximo.fecha)}</span></div>`
+      : "";
+    if (!feriados.length) {
+      lista.innerHTML = `<div class="tarjeta muted">Sin feriados para ${esc(anio)}.</div>`;
+      return;
+    }
+    const porMes = {};
+    for (const f of feriados) {
+      const m = Number(String(f.fecha).slice(5, 7));
+      (porMes[m] = porMes[m] || []).push(f);
+    }
+    lista.innerHTML = Object.keys(porMes).sort((a, b) => a - b).map((m) =>
+      `<div class="tarjeta"><h3>${MESES_ES[Number(m) - 1]}</h3>
+        <table><thead><tr><th>Fecha</th><th>Feriado</th><th>Tipo</th><th>Irrenunciable</th></tr></thead>
+        <tbody>${porMes[m].map((f) => `<tr>
+          <td>${formatearFechaCL(f.fecha)}</td>
+          <td>${esc(f.titulo)}</td>
+          <td>${esc(f.tipo || "-")}</td>
+          <td>${f.irrenunciable ? '<span class="badge-rol">Si</span>' : "-"}</td>
+        </tr>`).join("")}</tbody></table>
+      </div>`
+    ).join("");
+  } catch (err) {
+    lista.innerHTML = mensajeError(err);
+  }
+}
+
+async function panelDirectorio() {
+  contenido(
+    `<div class="encabezado"><h2 class="pagina">Directorio MINEDUC - Los Angeles</h2></div>
+     <div class="tarjeta">
+       <p class="muted">Establecimientos de la comuna de <strong>Los Angeles</strong> (Directorio Oficial, Datos Abiertos MINEDUC). Filtre por nombre o por RBD.</p>
+       <div class="grid-2">
+         <div class="campo"><label>Nombre</label><input type="text" id="dir-q" placeholder="Ej: Escuela"></div>
+         <div class="campo"><label>RBD</label><input type="text" id="dir-rbd" placeholder="Ej: 4201"></div>
+       </div>
+       <button class="btn btn-primario2" id="btn-dir-buscar">Buscar</button>
+       <button class="btn btn-mini" id="btn-dir-todos">Ver todos</button>
+     </div>
+     <div id="dir-resultados"></div>`
+  );
+  $("#btn-dir-buscar").onclick = buscarDirectorio;
+  $("#btn-dir-todos").onclick = () => { $("#dir-q").value = ""; $("#dir-rbd").value = ""; buscarDirectorio(); };
+  $("#dir-q").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarDirectorio(); });
+  $("#dir-rbd").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarDirectorio(); });
+  buscarDirectorio();
+}
+
+async function buscarDirectorio() {
+  const q = $("#dir-q").value.trim();
+  const rbd = $("#dir-rbd").value.trim();
+  const cont = $("#dir-resultados");
+  cont.innerHTML = `<div class="mensaje">Buscando...</div>`;
+  try {
+    const r = await API.directorio({ q, rbd });
+    const lista = r.resultados || [];
+    if (!lista.length) {
+      cont.innerHTML = `<div class="tarjeta muted">Sin coincidencias en Los Angeles.</div>`;
+      return;
+    }
+    cont.innerHTML = `<div class="tarjeta">
+      <p class="muted">${r.total} establecimiento(s) en ${esc(r.comuna || "Los Angeles")}.</p>
+      <table>
+      <thead><tr><th>RBD</th><th>Establecimiento</th><th>Dependencia</th><th>Direccion</th><th>Matricula</th></tr></thead>
+      <tbody>${lista.map((e) => `<tr>
+        <td>${esc(e.rbd)}</td>
+        <td>${esc(e.nombre)}</td>
+        <td>${e.dependencia ? `<span class="badge-rol">${esc(e.dependencia)}</span>` : esc(e.tipoDependencia || "-")}</td>
+        <td>${esc(e.direccion || "-")}</td>
+        <td>${e.matricula || 0}</td>
+      </tr>`).join("")}</tbody></table></div>`;
+  } catch (err) {
+    cont.innerHTML = mensajeError(err);
+  }
 }
 
 // ============================================================
@@ -735,6 +929,7 @@ async function panelAdminActividades() {
   contenido(
     `<div class="encabezado"><h2 class="pagina">Actividades</h2>
        <button class="btn btn-primario2" id="btn-nuevo-act">+ Nueva</button>
+       <button class="btn btn-mini" id="btn-nueva-area">+ Área</button>
        <button class="btn btn-mini" id="btn-seccion-act">+ Sección</button></div>
 
      <div class="act-buscador">
@@ -889,10 +1084,19 @@ async function panelAdminActividades() {
   buscarAct();
 
   $("#btn-nuevo-act").onclick = () => { abrirFormActividad(null); };
+  $("#btn-nueva-area").onclick = async () => {
+    const nombre = prompt("Nombre de la nueva area:");
+    if (!nombre) return;
+    try {
+      await API.agregarArea(nombre.trim());
+      await cargarCatalogos();
+      panelAdminActividades();
+    } catch (err) { mostrarMensaje(err.message); }
+  };
   $("#btn-seccion-act").onclick = async () => {
     const nombre = prompt("Nombre de la nueva seccion:");
     if (!nombre) return;
-    const area = prompt("Area (Deportiva o Artístico/Cultural):");
+    const area = prompt("Area (Competitivo, Amistoso o Artístico Cultural):");
     try {
       await API.crearSeccion({ nombre, area });
       panelAdminActividades();
@@ -2654,7 +2858,7 @@ async function cargarCarteleraEn(sel) {
 
   div.innerHTML = `<div class="grid-2 cartelera-f">
       <div class="campo"><label>Buscar actividad</label><input id="cart-buscar" placeholder="Por nombre o area..." autocomplete="off"></div>
-      <div class="campo"><label>Area</label><select id="cart-area"><option value="">Todas las areas</option><option value="Deportiva">Deportiva</option><option value="Artistico/Cultural">Artistico / Cultural</option></select></div>
+      <div class="campo"><label>Area</label><select id="cart-area"><option value="">Todas las areas</option>${(CAT.areas || []).map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join("")}</select></div>
     </div><div id="cart-items">${
       lista.length
         ? lista.map((a) => `<div class="tarjeta" data-busq="${esc((a.nombre + " " + a.area).toLowerCase())}" data-area="${esc(a.area)}"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3></div>`).join("")
@@ -3183,6 +3387,9 @@ async function panelLectorEstudiantes() {
 // ---------- Init ----------
 function init() {
   API.loadToken();
+  document.addEventListener("input", (e) => {
+    if (e.target && e.target.tagName === "INPUT") normalizarCampo(e.target);
+  });
   $("#form-login").addEventListener("submit", async (e) => {
     e.preventDefault();
     $("#login-error").classList.add("oculta");

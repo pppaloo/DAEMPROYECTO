@@ -7,8 +7,9 @@ const ROLES = {
 };
 
 const AREAS = {
-  DEPORTIVA: "Deportiva",
-  ARTISTICO_CULTURAL: "Artístico/Cultural",
+  COMPETITIVO: "Competitivo",
+  AMISTOSO: "Amistoso",
+  ARTISTICO_CULTURAL: "Artístico Cultural",
 };
 
 const DEPENDENCIAS = {

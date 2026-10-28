@@ -19,6 +19,7 @@ const resultadoRoutes = require("./routes/resultadoRoutes");
 const reporteRoutes = require("./routes/reporteRoutes");
 const catalogRoutes = require("./routes/catalogRoutes");
 const notificacionRoutes = require("./routes/notificacionRoutes");
+const externoRoutes = require("./routes/externoRoutes");
 const verificarRecaptcha = require("./middlewares/recaptcha");
 
 const app = express();
@@ -58,6 +59,7 @@ app.use("/api/resultados", resultadoRoutes);
 app.use("/api/reportes", reporteRoutes);
 app.use("/api/catalogos", catalogRoutes);
 app.use("/api/notificaciones", notificacionRoutes);
+app.use("/api/externo", externoRoutes);
 
 // Clave publica de reCAPTCHA v3 para el frontend ("" si no esta configurada).
 app.get("/api/recaptcha", (req, res) => {

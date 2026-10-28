@@ -11,6 +11,14 @@ function tabla(ddl) {
 
 
 const CREAR_TABLAS = [
+  // ---------- Area ----------
+  `CREATE TABLE IF NOT EXISTS areas (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nombre TEXT NOT NULL UNIQUE,
+    createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+    updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+  )`,
+
   // ---------- Establecimiento ----------
   `CREATE TABLE IF NOT EXISTS establecimientos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -28,8 +36,7 @@ const CREAR_TABLAS = [
   `CREATE TABLE IF NOT EXISTS secciones (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL,
-    area TEXT NOT NULL DEFAULT 'Deportiva'
-      CHECK (area IN ('Deportiva','Artístico/Cultural')),
+    area TEXT NOT NULL DEFAULT 'Deportiva',
     anio INTEGER NOT NULL,
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
@@ -40,8 +47,7 @@ const CREAR_TABLAS = [
   `CREATE TABLE IF NOT EXISTS actividades (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     nombre TEXT NOT NULL,
-    area TEXT NOT NULL DEFAULT 'Deportiva'
-      CHECK (area IN ('Deportiva','Artístico/Cultural')),
+    area TEXT NOT NULL DEFAULT 'Deportiva',
     seccion INTEGER DEFAULT NULL REFERENCES secciones (id) ON DELETE SET NULL,
     categorias TEXT NOT NULL DEFAULT '[]',   -- JSON: [{nombre, subcategorias:[..]}]
     divisiones TEXT NOT NULL DEFAULT '[]',   -- JSON: [String]
@@ -333,6 +339,56 @@ function aplicarMigraciones(bd) {
     bd.exec(`CREATE INDEX IF NOT EXISTS idx_notificaciones_destinatario ON notificaciones (destinatario)`);
     bd.exec(`PRAGMA foreign_keys = ON`);
   }
+
+  // Las areas ya no tienen CHECK fijo: se puedan agregar dinamicamente.
+  // SQLite no puede alterar un CHECK, asi que se recrean las tablas que lo
+  // llevaban conservando filas e indices.
+  const reconstruir = (nombre, crearDdl, insertar) => {
+    const actual = bd.prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?`).get(nombre);
+    if (!actual || !actual.sql || !actual.sql.includes("CHECK (area IN")) return;
+    bd.exec(`PRAGMA foreign_keys = OFF`);
+    bd.exec(`CREATE TABLE ${nombre}__nueva (${crearDdl})`);
+    bd.exec(insertar);
+    bd.exec(`DROP TABLE ${nombre}`);
+    bd.exec(`ALTER TABLE ${nombre}__nueva RENAME TO ${nombre}`);
+    bd.exec(`PRAGMA foreign_keys = ON`);
+  };
+  reconstruir(
+    "secciones",
+    `id INTEGER PRIMARY KEY AUTOINCREMENT,
+     nombre TEXT NOT NULL,
+     area TEXT NOT NULL DEFAULT 'Deportiva',
+     anio INTEGER NOT NULL,
+     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))`,
+    `INSERT INTO secciones__nueva (id, nombre, area, anio, createdAt, updatedAt)
+     SELECT id, nombre, area, anio, createdAt, updatedAt FROM secciones`
+  );
+  bd.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_secciones_nombre_anio ON secciones (nombre, anio)`);
+  reconstruir(
+    "actividades",
+    `id INTEGER PRIMARY KEY AUTOINCREMENT,
+     nombre TEXT NOT NULL,
+     area TEXT NOT NULL DEFAULT 'Deportiva',
+     seccion INTEGER DEFAULT NULL REFERENCES secciones (id) ON DELETE SET NULL,
+     categorias TEXT NOT NULL DEFAULT '[]',
+     divisiones TEXT NOT NULL DEFAULT '[]',
+     anio INTEGER NOT NULL,
+     semestre INTEGER NOT NULL DEFAULT 1 CHECK (semestre IN (1,2)),
+     estado TEXT NOT NULL DEFAULT 'publicada' CHECK (estado IN ('publicada','en_inscripcion','cerrada')),
+     fechaAperturaInscripcion TEXT DEFAULT NULL,
+     fechaCierreInscripcion TEXT DEFAULT NULL,
+     edadMinima INTEGER DEFAULT NULL,
+     edadMaxima INTEGER DEFAULT NULL,
+     recintos TEXT NOT NULL DEFAULT '[]',
+     limiteInscritos INTEGER NOT NULL DEFAULT 0,
+     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))`,
+    `INSERT INTO actividades__nueva (id, nombre, area, seccion, categorias, divisiones, anio, semestre, estado, fechaAperturaInscripcion, fechaCierreInscripcion, edadMinima, edadMaxima, recintos, limiteInscritos, createdAt, updatedAt)
+     SELECT id, nombre, area, seccion, categorias, divisiones, anio, semestre, estado, fechaAperturaInscripcion, fechaCierreInscripcion, edadMinima, edadMaxima, recintos, limiteInscritos, createdAt, updatedAt FROM actividades`
+  );
+  bd.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_actividades_nombre_area_anio_seccion
+    ON actividades (nombre, area, anio, seccion)`);
 }
 
 function crearEsquema() {

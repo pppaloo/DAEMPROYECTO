@@ -220,6 +220,19 @@ const API = {
   async reporteTorneos() { return this.peticion("GET", "/api/reportes/torneos"); },
 
   async catalogos() { return this.peticion("GET", "/api/catalogos"); },
+  async agregarArea(nombre) { return this.peticion("POST", "/api/catalogos/areas", { nombre }); },
+
+  // ---------- APIs externas: feriados de Chile y Directorio MINEDUC ----------
+  async feriados(anio) {
+    const qs = anio ? `?anio=${encodeURIComponent(anio)}` : "";
+    return this.peticion("GET", `/api/externo/feriados${qs}`);
+  },
+  async directorio(params = {}) {
+    const qs = new URLSearchParams();
+    if (params.q) qs.set("q", params.q);
+    if (params.rbd) qs.set("rbd", params.rbd);
+    return this.peticion("GET", `/api/externo/directorio?${qs.toString()}`);
+  },
 
   // Notificaciones: historial + quitar/restaurar del dashboard.
   async notificaciones() { return this.peticion("GET", "/api/notificaciones"); },
