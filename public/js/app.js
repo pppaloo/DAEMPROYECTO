@@ -3066,7 +3066,7 @@ function filaSolicitudHtml(s, conAcciones) {
   const nAl = (s.alumnos && s.alumnos.length) ? s.alumnos.length : (s.alumno && s.alumno.rut ? 1 : 0);
   return `<tr>
     <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
-    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${nAl > 1 ? ` <button class="btn btn-mini" data-ver-sol="${s._id}">Ver estudiantes</button>` : ""}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
     <td>${esc(fechaSolicitud(s.createdAt))}</td>
@@ -3115,6 +3115,7 @@ function conectarTabsSolicitudes(scope, recargar) {
 
 async function panelAdminSolicitudes() {
   const sol = await API.solicitudes();
+  window.SOLICITUDES_CACHE = sol;
   const pendientes = sol.filter((s) => s.estado === "en_proceso");
   const historial = sol.filter((s) => s.estado !== "en_proceso");
   const tab = SOLICITUDES_UI.tabAdmin;
@@ -3129,6 +3130,15 @@ async function panelAdminSolicitudes() {
   );
   conectarTabsSolicitudes("admin", panelAdminSolicitudes);
   conectarPaginacion(panelAdminSolicitudes);
+  document.querySelectorAll("[data-ver-sol]").forEach((b) => {
+    b.onclick = () => {
+      const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
+      if (!s) return;
+      const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
+      const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
+      alert(`Estudiantes de la solicitud ${s.codigo || s._id}:\\n\\n${txt}`);
+    };
+  });
   document.querySelectorAll("[data-sol-acc]").forEach((b) => {
     b.onclick = async () => {
       const estado = b.dataset.solEst;
@@ -3860,6 +3870,7 @@ async function panelCoordSolicitudesImpl() {
     API.inscripciones(),
     API.torneosPostulables().catch(() => []),
   ]);
+  window.SOLICITUDES_CACHE = solicitudes;
   const opAlIns = encAlumnos.filter((i) => i.estado === "aceptada")
     .map((i) => ({ valor: String(i._id), texto: `${i.actividad ? i.actividad.nombre : ""} - ${i.division}` }));
   const pendientes = solicitudes.filter((s) => s.estado === "en_proceso");
@@ -3910,6 +3921,15 @@ async function panelCoordSolicitudesImpl() {
 
   conectarTabsSolicitudes("coord", panelCoordSolicitudes);
   conectarPaginacion(panelCoordSolicitudes);
+  document.querySelectorAll("[data-ver-sol]").forEach((b) => {
+    b.onclick = () => {
+      const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
+      if (!s) return;
+      const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
+      const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
+      alert(`Estudiantes de la solicitud ${s.codigo || s._id}:\\n\\n${txt}`);
+    };
+  });
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
   initCombo("al-ins-txt", opAlIns, (o) => { $("#al-ins").value = o.valor; }, "Buscar inscripcion...");
 
