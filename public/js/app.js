@@ -3581,12 +3581,12 @@ function bloqueMisInscripcionesHtml(ins) {
             ${bloqueInscribirNuevoHtml()}
           </div>
           ${formInscribirNuevoHtml()}
-          <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
+           <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Estudiantes</th></tr></thead>
           <tbody>${p.items.length
             ? p.items.map((i) => `<tr>
             <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
             <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
-            <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
+             <td>${(i.alumnos && i.alumnos.length) ? i.alumnos.map((a) => esc(a.nombre || a.rut)).join(", ") : (i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-")}</td>
           </tr>`).join("")
             : `<tr><td colspan="4" class="muted">Todavia no tienes inscripciones.</td></tr>`}</tbody></table>
           ${htmlPaginacion("misIns", p)}
