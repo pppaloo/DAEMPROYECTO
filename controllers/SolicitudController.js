@@ -16,6 +16,18 @@ class SolicitudController {
     }
   }
 
+  async crearEstudiante(req, res) {
+    try {
+      const solicitud = await this.#service.crearSolicitudEstudiante(req.body, req.usuario);
+      res.status(201).json({
+        mensaje: "Solicitud enviada al Admin DAEM para su aprobacion",
+        solicitud,
+      });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
   async cambiarEstado(req, res) {
     try {
       const solicitud = await this.#service.cambiarEstado(

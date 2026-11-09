@@ -10,11 +10,17 @@ const controller = new SolicitudController();
 router.use(autenticar);
 router.use(soloLecturaDireccion);
 
-// El coordinador responde las solicitudes de su establecimiento; admin las administra.
+// El coordinador responde las solicitudes internas de su establecimiento y
+// propone estudiantes; el admin aprueba/rechaza las inscripciones.
 router.get("/", autorizarRol("admin", "coordinador"), (req, res) =>
   controller.obtenerTodos(req, res)
 );
-router.put("/:id/estado", autorizarRol("coordinador"), (req, res) => controller.cambiarEstado(req, res));
+router.post("/estudiante", autorizarRol("admin", "coordinador"), (req, res) =>
+  controller.crearEstudiante(req, res)
+);
+router.put("/:id/estado", autorizarRol("admin", "coordinador"), (req, res) =>
+  controller.cambiarEstado(req, res)
+);
 router.delete("/:id", autorizarRol("admin"), (req, res) => controller.eliminar(req, res));
 
 module.exports = router;

@@ -8,9 +8,82 @@ const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 // ---------- Parametros de campos: solo letras en nombres, formato RUT y limites ----------
 const MX = { letras: 60, nombre: 80, rut: 12, clave: 10, correo: 40, codigo: 12, telefono: 20 };
 const RE_LETRAS = /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ´.\- ]/g;
-const RE_RUT = /[^\d.kK-]/g;
+const RE_RUT = /[^0-9kK]/g;
+
+// Formatea un RUT mientras se escribe: 22.113.000-6
+function formatearRutInput(valor) {
+  const limpio = String(valor || "").replace(RE_RUT, "").toUpperCase().slice(0, 9);
+  if (limpio.length <= 1) return limpio;
+  const dv = limpio.slice(-1);
+  const cuerpo = limpio.slice(0, -1);
+  const cuerpoFmt = cuerpo.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
+  return cuerpoFmt + "-" + dv;
+}
 const RE_CODIGO = /[^A-Za-z0-9.\- ]/g;
 const RE_TEL = /[^\d+()\-. ]/g;
+
+// ---------- Catálogo de divisiones (espejo del servidor) ----------
+// Se usa para validar el rango de año de nacimiento en el cliente
+// antes de enviar la solicitud, sin esperar la respuesta del servidor.
+const DIVISIONES_CAT = [
+  { nombre: "MINIS",   desde: 2016, hasta: 2018 },
+  { nombre: "SUB 13", desde: 2013, hasta: 2015 },
+  { nombre: "SUB 14", desde: 2012, hasta: 2014 },
+  { nombre: "JUVENIL", desde: 2009, hasta: 2012 },
+  { nombre: "DAMAS",   desde: null, hasta: null },
+  { nombre: "VARONES", desde: null, hasta: null },
+];
+
+/**
+ * Valida en el cliente los requisitos de un alumno antes de enviar.
+ * @param {string} fechaNacimiento  - valor del input date ("AAAA-MM-DD")
+ * @param {string} genero           - "M", "F" u "Otro"
+ * @param {string} division         - nombre de la categoria (ej. "SUB 13")
+ * @param {object|null} reqTorneo   - objeto requisitos del torneo
+ *   { activo, edadMinima, edadMaxima, genero }  (puede ser null)
+ * @returns {string|null} Mensaje de error o null si todo está bien.
+ */
+function validarRequisitosAlumnoFront(fechaNacimiento, genero, division, reqTorneo) {
+  if (!fechaNacimiento) return null;
+
+  const nac = new Date(fechaNacimiento);
+  if (isNaN(nac)) return "Fecha de nacimiento inválida.";
+
+  const anioNac = nac.getFullYear();
+
+  // 1. Validación por categoría (año de nacimiento vs. rango de la división)
+  if (division) {
+    const div = DIVISIONES_CAT.find((d) => d.nombre === division);
+    if (div && div.desde !== null) {
+      if (anioNac < div.desde || anioNac > div.hasta) {
+        return `La categoría ${division} requiere nacer entre ${div.desde} y ${div.hasta}. El alumno nació en ${anioNac}.`;
+      }
+    }
+  }
+
+  // 2. Requisitos del torneo (edad mín/máx y género)
+  if (reqTorneo && reqTorneo.activo) {
+    const hoy = new Date();
+    let edad = hoy.getFullYear() - anioNac;
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+
+    if (reqTorneo.edadMinima != null && edad < reqTorneo.edadMinima) {
+      return `El alumno tiene ${edad} año(s), menor a la edad mínima del torneo (${reqTorneo.edadMinima} años).`;
+    }
+    if (reqTorneo.edadMaxima != null && edad > reqTorneo.edadMaxima) {
+      return `El alumno tiene ${edad} año(s), mayor a la edad máxima del torneo (${reqTorneo.edadMaxima} años).`;
+    }
+    if (reqTorneo.genero && ["varones", "damas"].includes(reqTorneo.genero) && genero && genero !== "Otro") {
+      const permitido = reqTorneo.genero === "varones" ? "M" : "F";
+      if (genero !== permitido) {
+        return `Este torneo es exclusivo para ${reqTorneo.genero}. El alumno ingresado es ${genero === "M" ? "masculino" : "femenino"}.`;
+      }
+    }
+  }
+
+  return null;
+}
 
 function tipoDeCampo(el) {
   if (el.dataset.tipo) return el.dataset.tipo;
@@ -33,7 +106,7 @@ function normalizarCampo(el) {
     if (tipo === "letras" || tipo === "nombre") {
       v = v.replace(RE_LETRAS, "").slice(0, MX[tipo]).replace(/ {2,}/g, " ");
     } else if (tipo === "rut") {
-      v = v.replace(RE_RUT, "").slice(0, MX.rut).replace(/k/g, "K");
+      v = formatearRutInput(v);
     } else if (tipo === "codigo") {
       v = v.replace(RE_CODIGO, "").slice(0, MX.codigo);
     } else if (tipo === "telefono") {
@@ -73,37 +146,29 @@ function avisarCampo(el, texto) {
   }, 2500);
 }
 
-// Banner verde temporal de exito. Flotante sobre el body para que sobreviva
-// a la recarga interna del panel (#vista-contenido se re-renderiza al guardar).
-let __timerExito = null;
-const mostrarExito = (msg) => {
-  let preview = document.querySelector(".banner-exito");
-  if (!preview) {
-    preview = document.createElement("div");
-    preview.className = "banner-exito";
-    preview.style.cssText = "position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;align-items:center;gap:8px;background:#e8f5e9;border:1px solid #81c784;color:#1b5e20;padding:10px 16px;border-radius:8px;box-shadow:0 2px 10px rgba(0,0,0,.15);font-weight:600;font-size:14px;transition:opacity .25s;";
-    document.body.appendChild(preview);
-  }
-  preview.innerHTML = `<span>&#10004;</span><span>${esc(msg)}</span>`;
-  clearTimeout(__timerExito);
-  __timerExito = setTimeout(() => { preview.style.opacity = "0"; setTimeout(() => preview.remove(), 300); }, 3200);
-};
+// Banner de exito: usa el mismo toast centrado para mantener un solo estilo.
+const mostrarExito = (msg) => mostrarMensaje(msg, "ok");
 
 // ---------- Toasts (reemplazan a alert) ----------
-function mostrarMensaje(texto, tipo = "info") {
+function mostrarMensaje(texto, tipo) {
+  const msg = String(texto);
+  if (!tipo) {
+    const pareceError = /(error|no se pudo|no se puede|no pueden|inv[aá]lid|seleccione|complete|indique|debe|deben|sin |no hay|no tiene|no existe|ya existe|fall[oó]|incorrect|obligatori|requerid)/i.test(msg);
+    tipo = pareceError ? "error" : "ok";
+  }
   let cont = document.getElementById("tostadas");
   if (!cont) {
     cont = document.createElement("div");
     cont.id = "tostadas";
-    cont.style.cssText = "position:fixed;top:14px;right:14px;z-index:10000;display:flex;flex-direction:column;gap:10px;max-width:360px;";
     document.body.appendChild(cont);
   }
   const el = document.createElement("div");
   el.className = "tostada tostada-" + tipo;
-  el.innerHTML = `<span>${esc(String(texto))}</span><button type="button" aria-label="Cerrar">&times;</button>`;
+  el.setAttribute("role", tipo === "error" ? "alert" : "status");
+  el.innerHTML = `<span>${esc(msg)}</span><button type="button" aria-label="Cerrar">&times;</button>`;
   el.querySelector("button").onclick = () => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); };
   cont.appendChild(el);
-  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 3800);
+  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 4200);
 }
 
 // ---------- Modal de confirmacion (reemplaza a confirm) ----------
@@ -353,7 +418,6 @@ const MenuPorRol = {
     { clave: "adminValoraciones", label: "Ranking Cumplimiento" },
     { clave: "adminReportes", label: "Reportes" },
     { clave: "feriados", label: "Feriados" },
-    { clave: "directorio", label: "Directorio MINEDUC" },
   ],
   coordinador: [
     { clave: "coordResumen", label: "Resumen" },
@@ -361,9 +425,8 @@ const MenuPorRol = {
     { clave: "coordInscribir", label: "Postulaciones" },
     { clave: "coordTorneos", label: "Postular Torneos" },
     { clave: "coordSolicitudes", label: "Mis Solicitudes" },
-    { clave: "coordNomina", label: "Nomina Estudiantes" },
     { clave: "feriados", label: "Feriados" },
-    { clave: "directorio", label: "Directorio MINEDUC" },
+    { clave: "directorio", label: "Establecimientos" },
   ],
   lector: [
     { clave: "lectorResumen", label: "Resumen" },
@@ -433,8 +496,8 @@ async function panelFeriados() {
      <div id="fer-proximo"></div>
      <div id="fer-lista"></div>`
   );
-  $("#btn-fer-buscar").onclick = () => cargarFeriados($("#fer-anio").value);
-  $("#fer-anio").addEventListener("keydown", (e) => { if (e.key === "Enter") cargarFeriados($("#fer-anio").value); });
+  $("#btn-fer-buscar").onclick = () => { reiniciarPaginaUI("feriados"); cargarFeriados($("#fer-anio").value); };
+  $("#fer-anio").addEventListener("keydown", (e) => { if (e.key === "Enter") { reiniciarPaginaUI("feriados"); cargarFeriados($("#fer-anio").value); } });
   cargarFeriados(anioActual);
 }
 
@@ -457,7 +520,8 @@ async function cargarFeriados(anio) {
       return;
     }
     const porMes = {};
-    for (const f of feriados) {
+    const pagina = paginarUI(feriados, "feriados", 3);
+    for (const f of pagina.items) {
       const m = Number(String(f.fecha).slice(5, 7));
       (porMes[m] = porMes[m] || []).push(f);
     }
@@ -471,7 +535,8 @@ async function cargarFeriados(anio) {
           <td>${f.irrenunciable ? '<span class="badge-rol">Si</span>' : "-"}</td>
         </tr>`).join("")}</tbody></table>
       </div>`
-    ).join("");
+    ).join("") + htmlPaginacion("feriados", pagina);
+    conectarPaginacion(() => cargarFeriados(anio));
   } catch (err) {
     lista.innerHTML = mensajeError(err);
   }
@@ -479,7 +544,7 @@ async function cargarFeriados(anio) {
 
 async function panelDirectorio() {
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Directorio MINEDUC - Los Angeles</h2></div>
+    `<div class="encabezado"><h2 class="pagina">Establecimientos - Los Angeles</h2></div>
      <div class="tarjeta">
        <p class="muted">Establecimientos de la comuna de <strong>Los Angeles</strong> (Directorio Oficial, Datos Abiertos MINEDUC). Filtre por nombre o por RBD.</p>
        <div class="grid-2">
@@ -491,10 +556,10 @@ async function panelDirectorio() {
      </div>
      <div id="dir-resultados"></div>`
   );
-  $("#btn-dir-buscar").onclick = buscarDirectorio;
-  $("#btn-dir-todos").onclick = () => { $("#dir-q").value = ""; $("#dir-rbd").value = ""; buscarDirectorio(); };
-  $("#dir-q").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarDirectorio(); });
-  $("#dir-rbd").addEventListener("keydown", (e) => { if (e.key === "Enter") buscarDirectorio(); });
+  $("#btn-dir-buscar").onclick = () => { reiniciarPaginaUI("directorio"); buscarDirectorio(); };
+  $("#btn-dir-todos").onclick = () => { $("#dir-q").value = ""; $("#dir-rbd").value = ""; reiniciarPaginaUI("directorio"); buscarDirectorio(); };
+  $("#dir-q").addEventListener("keydown", (e) => { if (e.key === "Enter") { reiniciarPaginaUI("directorio"); buscarDirectorio(); } });
+  $("#dir-rbd").addEventListener("keydown", (e) => { if (e.key === "Enter") { reiniciarPaginaUI("directorio"); buscarDirectorio(); } });
   buscarDirectorio();
 }
 
@@ -510,17 +575,20 @@ async function buscarDirectorio() {
       cont.innerHTML = `<div class="tarjeta muted">Sin coincidencias en Los Angeles.</div>`;
       return;
     }
+    const pagina = paginarUI(lista, "directorio");
     cont.innerHTML = `<div class="tarjeta">
       <p class="muted">${r.total} establecimiento(s) en ${esc(r.comuna || "Los Angeles")}.</p>
       <table>
       <thead><tr><th>RBD</th><th>Establecimiento</th><th>Dependencia</th><th>Direccion</th><th>Matricula</th></tr></thead>
-      <tbody>${lista.map((e) => `<tr>
+      <tbody>${pagina.items.map((e) => `<tr>
         <td>${esc(e.rbd)}</td>
         <td>${esc(e.nombre)}</td>
         <td>${e.dependencia ? `<span class="badge-rol">${esc(e.dependencia)}</span>` : esc(e.tipoDependencia || "-")}</td>
         <td>${esc(e.direccion || "-")}</td>
         <td>${e.matricula || 0}</td>
-      </tr>`).join("")}</tbody></table></div>`;
+      </tr>`).join("")}</tbody></table>
+      ${htmlPaginacion("directorio", pagina)}</div>`;
+    conectarPaginacion(buscarDirectorio);
   } catch (err) {
     cont.innerHTML = mensajeError(err);
   }
@@ -566,7 +634,7 @@ function notifsEnlazar(alRefrescar) {
       ev.stopPropagation();
       ev.preventDefault();
       try { await API.descartarNotificacion(b.dataset.descartarNotif); await recargar(); }
-      catch (err) { mostrarMensaje(err.message); }
+      catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
   document.querySelectorAll("[data-restaurar-notif]").forEach((b) => {
@@ -574,7 +642,7 @@ function notifsEnlazar(alRefrescar) {
       ev.stopPropagation();
       ev.preventDefault();
       try { await API.restaurarNotificacion(b.dataset.restaurarNotif); await recargar(); }
-      catch (err) { mostrarMensaje(err.message); }
+      catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
   const masa = [
@@ -584,7 +652,7 @@ function notifsEnlazar(alRefrescar) {
   masa.forEach(([id, fn]) => {
     const b = document.getElementById(id);
     if (b) b.onclick = async () => {
-      try { await fn(); await recargar(); } catch (err) { mostrarMensaje(err.message); }
+      try { await fn(); await recargar(); } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 }
@@ -593,13 +661,15 @@ function notifsEnlazar(alRefrescar) {
 // No se limita la cantidad: se muestran todas.
 function bloqueNotificacionesHtml(lista, pendientes) {
   const enBandeja = lista.filter((n) => !n.descartada);
+  const p = paginarUI(enBandeja, "coordNotifs");
   return `<div class="seccion notif-resumen">
         <h3>Notificaciones <span class="badge-rol">${pendientes}</span></h3>
         <div class="seccion">
           <button class="btn btn-notif" id="btn-descartar-notifs">Quitar todas</button>
           <button class="btn btn-notif" id="btn-ver-historial-notifs">Ver historial</button>
         </div>
-        <div id="lista-notifs">${notifsHtml(enBandeja)}</div>
+        <div id="lista-notifs">${notifsHtml(p.items)}</div>
+        ${htmlPaginacion("coordNotifs", p)}
       </div>`;
 }
 
@@ -610,6 +680,7 @@ async function panelNotificaciones() {
   const r = await API.notificaciones();
   const todas = r.notificaciones || [];
   const descartadas = todas.filter((n) => n.descartada).length;
+  const p = paginarUI(todas, "notifs");
 
   contenido(
     `<div class="encabezado">
@@ -626,11 +697,13 @@ async function panelNotificaciones() {
        <button class="btn btn-notif" id="btn-restaurar-notifs">Restaurar quitadas</button>
      </div>
      <div class="tarjeta">
-       <div id="lista-notifs">${notifsHtml(todas)}</div>
+       <div id="lista-notifs">${notifsHtml(p.items)}</div>
+       ${htmlPaginacion("notifs", p)}
      </div>`
   );
 
   notifsEnlazar(() => CargarPanel(panelNotificaciones));
+  conectarPaginacion(panelNotificaciones);
 }
 
 async function panelAdminResumen() {
@@ -666,20 +739,21 @@ async function panelAdminResumen() {
     const e = etiquetasEstado[estado] || { label: estado, clase: "est-regular" };
     return `<span class="badge-estado-tor ${e.clase}">${esc(e.label)}</span>`;
   };
+  const pCambios = paginarUI(cambiosRecientes, "adminCambios");
 
   contenido(
     `<h2 class="pagina">Resumen DAEM</h2>
      <div class="stats-fila">
-       <div class="stat">
+       <div class="stat stat-clicable" data-ir="adminEstablecimientos" role="button" tabindex="0" title="Ir a Establecimientos">
          <div class="num">${est.length}</div><div class="lbl">Establecimientos</div>
        </div>
-       <div class="stat">
+       <div class="stat stat-clicable" data-ir="adminActividades" role="button" tabindex="0" title="Ir a Actividades">
          <div class="num">${act.length}</div><div class="lbl">Actividades</div>
        </div>
-       <div class="stat">
+       <div class="stat stat-clicable" data-ir="adminTorneos" role="button" tabindex="0" title="Ir a Torneos">
          <div class="num">${tor.length}</div><div class="lbl">Torneos</div>
        </div>
-       <div class="stat">
+       <div class="stat stat-clicable" data-ir="adminSolicitudes" role="button" tabindex="0" title="Ir a Solicitudes">
          <div class="num">${solicitudesPendientes.length}</div><div class="lbl">Solicitudes Pend.</div>
        </div>
      </div>
@@ -690,7 +764,7 @@ async function panelAdminResumen() {
 
      <h3 class="subtitulo-seccion">Cambios Recientes (ultimo mes)</h3>
      <div class="tarjeta">
-       ${cambiosRecientes.length ? cambiosRecientes.map((t) => {
+       ${pCambios.items.length ? pCambios.items.map((t) => {
          const creadoRecientemente = t.createdAt && new Date(t.createdAt).getTime() >= haceUnMes;
          return `<div class="campo cambio-torneo">
            <strong>${esc(t.nombre)}</strong>
@@ -699,40 +773,383 @@ async function panelAdminResumen() {
            <p class="muted">${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</p>
          </div>`;
 }).join("") : "<p class='muted'>No hubo cambios de torneos en el ultimo mes.</p>"}
+       ${htmlPaginacion("adminCambios", pCambios)}
       </div>`
   );
 
+  conectarPaginacion(panelAdminResumen);
+  document.querySelectorAll("[data-ir]").forEach((el) => {
+    const ir = () => navegar(el.dataset.ir);
+    el.onclick = ir;
+    el.onkeydown = (e) => {
+      if (e.key === "Enter" || e.key === " ") { e.preventDefault(); ir(); }
+    };
+  });
   $("#btn-admin-sol").onclick = () => navegar("adminSolicitudes");
   $("#btn-admin-agenda").onclick = () => navegar("adminAgenda");
 }
 
+// ============================================================
+// DIRECTORIO MINEDUC + MIS ESTABLECIMIENTOS
+// Dos listas alternables:
+//  1) Directorio Oficial MINEDUC (solo Los Angeles, datos abiertos).
+//  2) Establecimientos agregados por el usuario (CRUD completo).
+// ============================================================
+const DIRECTORIO_MENU = {
+  vista: "mineduc", // "mineduc" | "mios"
+  filtro: "",
+  directorio: [],
+  directorioError: false,
+  mis: [],
+  form: null, // { modo: "nuevo"|"editar", id, codigo, nombre, dependencia, direccion, contacto }
+  paginaMineduc: 1,
+  paginaMios: 1,
+};
+
+// Registros por pagina para las listas del modulo (evita scroll largo).
+const DIRECTORIO_POR_PAGINA = 12;
+
+function paginar(items, pagina, porPagina = DIRECTORIO_POR_PAGINA) {
+  const total = items.length;
+  const tamano = Math.max(1, Number(porPagina) || DIRECTORIO_POR_PAGINA);
+  const paginas = Math.max(1, Math.ceil(total / tamano));
+  const actual = Math.min(Math.max(Number(pagina) || 1, 1), paginas);
+  const inicio = (actual - 1) * tamano;
+  return { total, paginas, actual, inicio, items: items.slice(inicio, inicio + tamano) };
+}
+
+function htmlPaginacion(prefijo, p) {
+  if (p.paginas <= 1) return "";
+  return `<div class="paginacion" style="display:flex;align-items:center;gap:8px;margin-top:12px;flex-wrap:wrap">
+      <button class="btn btn-mini" data-pag="${prefijo}" data-pagina="${p.actual - 1}" ${p.actual <= 1 ? "disabled" : ""}>Anterior</button>
+      <span class="muted">Pagina ${p.actual} de ${p.paginas} (${p.inicio + 1}-${p.inicio + p.items.length} de ${p.total})</span>
+      <button class="btn btn-mini" data-pag="${prefijo}" data-pagina="${p.actual + 1}" ${p.actual >= p.paginas ? "disabled" : ""}>Siguiente</button>
+    </div>`;
+}
+
+// Paginacion compartida por todos los listados: 12 registros por pagina.
+const PAGINAS_UI = {};
+
+function paginaUI(clave) {
+  return PAGINAS_UI[clave] || 1;
+}
+
+function paginarUI(items, clave, porPagina = DIRECTORIO_POR_PAGINA) {
+  const p = paginar(items, paginaUI(clave), porPagina);
+  PAGINAS_UI[clave] = p.actual;
+  return p;
+}
+
+function reiniciarPaginaUI(clave) {
+  PAGINAS_UI[clave] = 1;
+}
+
+// Enlaza todos los botones de paginacion del panel con su funcion de recarga.
+function conectarPaginacion(recargar, raiz) {
+  (raiz || document).querySelectorAll("[data-pag]").forEach((b) => {
+    b.onclick = () => {
+      PAGINAS_UI[b.dataset.pag] = Number(b.dataset.pagina) || 1;
+      recargar();
+    };
+  });
+}
+
+function normalizarTexto(txt) {
+  return String(txt || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 async function panelAdminEstablecimientos() {
-  const est = await API.establecimientos();
+  contenido(`<div class="mensaje">Cargando directorio MINEDUC...</div>`);
+  const [directorio, mis] = await Promise.all([
+    API.directorio({}).then((r) => r.resultados || []).catch(() => null),
+    API.establecimientos(),
+  ]);
+  DIRECTORIO_MENU.directorio = directorio || [];
+  DIRECTORIO_MENU.directorioError = directorio === null;
+  DIRECTORIO_MENU.mis = mis;
+  DIRECTORIO_MENU.vista = "mineduc";
+  DIRECTORIO_MENU.filtro = "";
+  DIRECTORIO_MENU.form = null;
+  DIRECTORIO_MENU.paginaMineduc = 1;
+  DIRECTORIO_MENU.paginaMios = 1;
+  renderDirectorioPanel();
+}
+
+function renderDirectorioPanel() {
+  const { vista, mis, form } = DIRECTORIO_MENU;
+  const esMineduc = vista === "mineduc";
   contenido(
-    `<div class="encabezado"><h2 class="pagina">Establecimientos</h2><button class="btn btn-primario2" id="btn-nuevo-est">+ Nuevo</button></div>
-     <div id="form-nuevo-est" class="tarjeta oculta">
-       <div class="grid-2">
-         <div class="campo"><label>Codigo (ej. A-59)</label><input id="est-codigo" placeholder="A-59"></div>
-         <div class="campo"><label>Nombre</label><input id="est-nombre"></div>
-         <div class="campo"><label>Dependencia</label>
-           <select id="est-dep">${(CAT.dependencias || []).map((d) => `<option>${esc(d)}</option>`).join("")}</select></div>
+    `<div class="encabezado">
+       <div>
+         <h2 class="pagina">Establecimientos</h2>
+         <p class="muted">Establecimientos de Los Ángeles y los que usted ha agregado.</p>
        </div>
-       <div class="campo"><label>Direccion</label><input id="est-dir"></div>
-       <button class="btn btn-ok" id="btn-guardar-est">Guardar</button>
+       <div style="display:flex;gap:8px;flex-wrap:wrap">
+         <button class="btn ${esMineduc ? "btn-primario2" : "btn-mini"}" id="dir-ver-mineduc">Establecimientos MINEDUC (${DIRECTORIO_MENU.directorio.length})</button>
+         <button class="btn ${esMineduc ? "btn-mini" : "btn-primario2"}" id="dir-ver-mios">Mis establecimientos (${mis.length})</button>
+         ${esMineduc ? "" : `<button class="btn btn-primario2" id="btn-nuevo-est">+ Nuevo</button>`}
+       </div>
      </div>
-     <div class="tarjeta"><table><thead><tr><th>Codigo</th><th>Nombre</th><th>Dependencia</th></tr></thead>
-     <tbody>${est.map((e) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.nombre)}</td><td>${esc(e.dependencia)}</td></tr>`).join("")}</tbody></table></div>`
+     ${esMineduc ? htmlListaMineduc() : htmlListaMia(form)}`
   );
-  $("#btn-nuevo-est").onclick = () => $("#form-nuevo-est").classList.toggle("oculta");
-  $("#btn-guardar-est").onclick = async () => {
-    try {
-      await API.crearEstablecimiento({
-        codigo: $("#est-codigo").value, nombre: $("#est-nombre").value,
-        dependencia: $("#est-dep").value, direccion: $("#est-dir").value,
-      });
-      panelAdminEstablecimientos();
-    } catch (err) { mostrarMensaje(err.message); }
+
+  $("#dir-ver-mineduc").onclick = () => {
+    DIRECTORIO_MENU.vista = "mineduc";
+    DIRECTORIO_MENU.form = null;
+    renderDirectorioPanel();
   };
+  $("#dir-ver-mios").onclick = () => {
+    DIRECTORIO_MENU.vista = "mios";
+    renderDirectorioPanel();
+  };
+
+  if (esMineduc) {
+    const inp = $("#dir-filtro");
+    if (inp) {
+      inp.oninput = () => {
+        DIRECTORIO_MENU.filtro = inp.value;
+        DIRECTORIO_MENU.paginaMineduc = 1;
+        pintarTablaMineduc();
+      };
+    }
+    pintarTablaMineduc();
+    return;
+  }
+
+  $("#btn-nuevo-est").onclick = () => abrirFormEstablecimiento(null);
+  if ($("#dirf-cancelar")) {
+    $("#dirf-cancelar").onclick = () => {
+      DIRECTORIO_MENU.form = null;
+      renderDirectorioPanel();
+    };
+  }
+  if ($("#dirf-guardar")) $("#dirf-guardar").onclick = guardarFormEstablecimiento;
+
+  // RBD: solo numeros, maximo 6 caracteres.
+  const cod = $("#dirf-codigo");
+  if (cod) {
+    cod.addEventListener("input", () => {
+      const limpio = cod.value.replace(/\D/g, "").slice(0, 6);
+      if (cod.value !== limpio) cod.value = limpio;
+    });
+  }
+
+  pintarTablaMios();
+}
+
+function htmlListaMineduc() {
+  return `<div class="tarjeta">
+      <p class="muted">Listado oficial de la comuna de <strong>Los Ángeles</strong> (Datos Abiertos MINEDUC). Busque por nombre o RBD y agregue el establecimiento a su lista.</p>
+      <div class="campo" style="max-width:420px"><label>Buscar por nombre o RBD</label>
+        <input type="text" id="dir-filtro" value="${esc(DIRECTORIO_MENU.filtro)}" placeholder="Ej: Escuela o 4201" autocomplete="off"></div>
+    </div>
+    <div id="dir-tabla"></div>`;
+}
+
+function pintarTablaMineduc() {
+  const cont = $("#dir-tabla");
+  if (!cont) return;
+  if (DIRECTORIO_MENU.directorioError) {
+    cont.innerHTML = `<div class="tarjeta muted">No se pudo cargar el listado MINEDUC. Revise la conexion e intente nuevamente.</div>`;
+    return;
+  }
+  const texto = normalizarTexto(DIRECTORIO_MENU.filtro);
+  const agregados = new Set(DIRECTORIO_MENU.mis.map((e) => String(e.codigo)));
+  const lista = DIRECTORIO_MENU.directorio.filter((e) => {
+    if (!texto) return true;
+    return String(e.rbd).includes(texto) || normalizarTexto(e.nombre).includes(texto);
+  });
+  if (!lista.length) {
+    cont.innerHTML = `<div class="tarjeta muted">Sin coincidencias en Establecimientos MINEDUC de Los Ángeles.</div>`;
+    return;
+  }
+  const p = paginar(lista, DIRECTORIO_MENU.paginaMineduc);
+  DIRECTORIO_MENU.paginaMineduc = p.actual;
+  cont.innerHTML = `<div class="tarjeta">
+      <p class="muted">${p.total} establecimiento(s) encontrado(s).</p>
+      <table>
+        <thead><tr><th>RBD</th><th>Establecimiento</th><th>Dependencia</th><th>Direccion</th><th>Matricula</th><th>Accion</th></tr></thead>
+        <tbody>${p.items.map((e) => {
+          const ya = agregados.has(String(e.rbd));
+          return `<tr>
+            <td>${esc(e.rbd)}</td>
+            <td>${esc(e.nombre)}</td>
+            <td>${e.dependencia ? `<span class="badge-rol">${esc(e.dependencia)}</span>` : esc(e.tipoDependencia || "-")}</td>
+            <td>${esc(e.direccion || "-")}</td>
+            <td>${e.matricula || 0}</td>
+            <td><button class="btn btn-mini ${ya ? "" : "btn-ok"}" data-agregar-mineduc="${esc(e.rbd)}" ${ya ? "disabled" : ""}>${ya ? "Agregado" : "Agregar"}</button></td>
+          </tr>`;
+        }).join("")}</tbody>
+      </table>
+      ${htmlPaginacion("mineduc", p)}
+    </div>`;
+  cont.querySelectorAll("[data-agregar-mineduc]").forEach((b) => {
+    b.onclick = () => agregarDesdeMineduc(b.dataset.agregarMineduc);
+  });
+  cont.querySelectorAll('[data-pag="mineduc"]').forEach((b) => {
+    b.onclick = () => {
+      DIRECTORIO_MENU.paginaMineduc = Number(b.dataset.pagina);
+      pintarTablaMineduc();
+    };
+  });
+}
+
+function htmlListaMia(form) {
+  return `${form ? htmlFormEstablecimiento(form) : ""}
+    <div class="tarjeta">
+      <p class="muted">Establecimientos agregados por usted. Puede editarlos o eliminarlos.</p>
+      <div id="mis-tabla"></div>
+    </div>`;
+}
+
+function pintarTablaMios() {
+  const cont = $("#mis-tabla");
+  if (!cont) return;
+  if (!DIRECTORIO_MENU.mis.length) {
+    cont.innerHTML = `<p class="muted">Aun no ha agregado establecimientos. Use la lista de Establecimientos MINEDUC o el boton "+ Nuevo".</p>`;
+    return;
+  }
+  const p = paginar(DIRECTORIO_MENU.mis, DIRECTORIO_MENU.paginaMios);
+  DIRECTORIO_MENU.paginaMios = p.actual;
+  cont.innerHTML = `<table>
+       <thead><tr><th>RBD</th><th>Nombre</th><th>Dependencia</th><th>Direccion</th><th>Contacto</th><th>Acciones</th></tr></thead>
+       <tbody>${p.items.map((e) => `<tr>
+           <td>${esc(e.codigo)}</td>
+           <td>${esc(e.nombre)}</td>
+           <td>${esc(e.dependencia)}</td>
+           <td>${esc(e.direccion || "-")}</td>
+           <td>${esc(e.contacto || "-")}</td>
+           <td style="white-space:nowrap">
+             <button class="btn btn-mini" data-editar-est="${esc(e._id)}">Editar</button>
+             <button class="btn btn-mini btn-err2" data-eliminar-est="${esc(e._id)}">Eliminar</button>
+           </td>
+         </tr>`).join("")}</tbody>
+     </table>
+     ${htmlPaginacion("mios", p)}`;
+
+  cont.querySelectorAll("[data-editar-est]").forEach((b) => {
+    b.onclick = () => abrirFormEstablecimiento(b.dataset.editarEst);
+  });
+  cont.querySelectorAll("[data-eliminar-est]").forEach((b) => {
+    b.onclick = () => eliminarEstablecimientoUI(b.dataset.eliminarEst);
+  });
+  cont.querySelectorAll('[data-pag="mios"]').forEach((b) => {
+    b.onclick = () => {
+      DIRECTORIO_MENU.paginaMios = Number(b.dataset.pagina);
+      pintarTablaMios();
+    };
+  });
+}
+
+function htmlFormEstablecimiento(form) {
+  const esEditar = form.modo === "editar";
+  const deps = CAT.dependencias && CAT.dependencias.length ? CAT.dependencias : ["Municipal", "Particular Subvencionado"];
+  return `<div class="tarjeta">
+      <h3>${esEditar ? "Editar establecimiento" : "Nuevo establecimiento"}</h3>
+      <div class="grid-2">
+        <div class="campo"><label>RBD (solo números, hasta 6)</label><input id="dirf-codigo" value="${esc(form.codigo || "")}" placeholder="Ej: 17791" inputmode="numeric" maxlength="6" autocomplete="off"></div>
+        <div class="campo"><label>Nombre</label><input id="dirf-nombre" value="${esc(form.nombre || "")}"></div>
+        <div class="campo"><label>Dependencia</label>
+          <select id="dirf-dep">${deps.map((d) => `<option value="${esc(d)}" ${d === form.dependencia ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
+        <div class="campo"><label>Direccion</label><input id="dirf-dir" value="${esc(form.direccion || "")}"></div>
+        <div class="campo"><label>Contacto</label><input id="dirf-contacto" value="${esc(form.contacto || "")}"></div>
+      </div>
+      <button class="btn btn-ok" id="dirf-guardar">Guardar</button>
+      <button class="btn btn-mini" id="dirf-cancelar">Cancelar</button>
+    </div>`;
+}
+
+function abrirFormEstablecimiento(id) {
+  const est = id ? DIRECTORIO_MENU.mis.find((e) => String(e._id) === String(id)) : null;
+  DIRECTORIO_MENU.vista = "mios";
+  DIRECTORIO_MENU.form = est
+    ? {
+        modo: "editar",
+        id: est._id,
+        codigo: est.codigo,
+        nombre: est.nombre,
+        dependencia: est.dependencia,
+        direccion: est.direccion || "",
+        contacto: est.contacto || "",
+      }
+    : { modo: "nuevo", id: null, codigo: "", nombre: "", dependencia: (CAT.dependencias && CAT.dependencias[0]) || "Municipal", direccion: "", contacto: "" };
+  renderDirectorioPanel();
+}
+
+async function guardarFormEstablecimiento() {
+  const form = DIRECTORIO_MENU.form;
+  if (!form) return;
+  const datos = {
+    codigo: $("#dirf-codigo").value.trim(),
+    nombre: $("#dirf-nombre").value.trim(),
+    dependencia: $("#dirf-dep").value,
+    direccion: $("#dirf-dir").value.trim(),
+    contacto: $("#dirf-contacto").value.trim(),
+  };
+  // El RBD debe ser numerico (1-6 digitos), sin letras ni simbolos.
+  if (!/^\d{1,6}$/.test(datos.codigo)) {
+    mostrarMensaje("El RBD debe tener solo numeros (1 a 6 digitos).", "error");
+    return;
+  }
+  try {
+    if (form.modo === "editar") {
+      await API.actualizarEstablecimiento(form.id, datos);
+      mostrarMensaje("Establecimiento actualizado", "ok");
+    } else {
+      await API.crearEstablecimiento(datos);
+      mostrarMensaje("Establecimiento agregado", "ok");
+    }
+    DIRECTORIO_MENU.form = null;
+    DIRECTORIO_MENU.mis = await API.establecimientos();
+    DIRECTORIO_MENU.paginaMios = 1;
+    renderDirectorioPanel();
+  } catch (err) {
+    mostrarMensaje(err.message, "error");
+  }
+}
+
+async function agregarDesdeMineduc(rbd) {
+  const item = DIRECTORIO_MENU.directorio.find((e) => String(e.rbd) === String(rbd));
+  if (!item) return;
+  try {
+    await API.crearEstablecimiento({
+      codigo: item.rbd,
+      nombre: item.nombre,
+      dependencia: item.dependencia || "Municipal",
+      direccion: item.direccion || "",
+    });
+    mostrarMensaje(`"${item.nombre}" agregado`, "ok");
+    DIRECTORIO_MENU.mis = await API.establecimientos();
+    DIRECTORIO_MENU.paginaMios = 1;
+    renderDirectorioPanel();
+  } catch (err) {
+    mostrarMensaje(err.message, "error");
+  }
+}
+
+async function eliminarEstablecimientoUI(id) {
+  const est = DIRECTORIO_MENU.mis.find((e) => String(e._id) === String(id));
+  if (!est) return;
+  const ok = await confirmarMensaje(
+    `Se eliminara "${est.nombre}" (${est.codigo}). Esta accion no se puede deshacer.`,
+    "Eliminar establecimiento",
+    "Eliminar",
+    true
+  );
+  if (!ok) return;
+  try {
+    await API.eliminarEstablecimiento(est._id);
+    mostrarMensaje("Establecimiento eliminado", "ok");
+    if (DIRECTORIO_MENU.form && String(DIRECTORIO_MENU.form.id) === String(est._id)) DIRECTORIO_MENU.form = null;
+    DIRECTORIO_MENU.mis = await API.establecimientos();
+    renderDirectorioPanel();
+  } catch (err) {
+    mostrarMensaje(err.message, "error");
+  }
 }
 
 async function panelAdminUsuarios() {
@@ -752,6 +1169,19 @@ async function panelAdminUsuarios() {
        </div>
        <button class="btn btn-ok" id="btn-guardar-usr">Guardar</button>
      </div>
+     <div id="form-editar-usr" class="tarjeta oculta">
+       <h3>Editar usuario</h3>
+       <div class="grid-2">
+         <div class="campo"><label>RUT</label><input id="usr-edit-rut" readonly></div>
+         <div class="campo"><label>Nombre</label><input id="usr-edit-nombre"></div>
+         <div class="campo"><label>Rol</label><select id="usr-edit-rol"><option value="admin">Admin</option><option value="coordinador">Coordinador</option><option value="lector">Lector</option></select></div>
+         <div class="campo"><label>Correo</label><input id="usr-edit-correo" type="email"></div>
+         <div class="campo"><label>Establecimiento</label>
+           ${comboHtml("usr-edit-est-txt", "Buscar establecimiento...")}<input type="hidden" id="usr-edit-est"></div>
+       </div>
+       <button class="btn btn-ok" id="btn-guardar-edit-usr">Guardar cambios</button>
+       <button class="btn btn-mini" id="btn-cancelar-edit-usr">Cancelar</button>
+     </div>
      <div class="act-buscador">
        <input id="buscador-usr" type="search" placeholder="Buscar por nombre, RUT, rol o establecimiento..." aria-label="Buscar usuario">
        <select id="filtro-rol-usr" class="buscador-select" aria-label="Filtrar por rol">
@@ -767,10 +1197,7 @@ async function panelAdminUsuarios() {
        <span id="cont-usr" class="act-buscador-contador">0 usuarios</span>
      </div>
      <p id="usr-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron usuarios.</p>
-     <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Rol</th><th>Establecimiento</th><th>Correo</th><th>Acciones</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr data-busq="${esc((((u.nombre || "") + " " + (u.rut || "") + " " + (u.rol || "") + " " + (u.email || "") + " " + (u.establecimiento ? (u.establecimiento.nombre || "") : "") + " " + (u.establecimiento ? (u.establecimiento.codigo || "") : "")).toLowerCase()))}" data-rol="${esc(u.rol || "")}" data-est="${esc(u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "")}">
-       <td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? (u.establecimiento.nombre || u.establecimiento) : "-")}</td><td>${esc(u.email || "-")}</td>
-       <td><button class="btn btn-err2 btn-mini" data-elim-usr="${esc(u._id)}" ${u._id === (API.usuario && API.usuario._id) ? "disabled" : ""}>Eliminar</button></td></tr>`).join("")}</tbody></table></div>`
+     <div class="tarjeta"><div id="usr-tabla"></div></div>`
   );
   $("#btn-nuevo-usr").onclick = () => $("#form-nuevo-usr").classList.toggle("oculta");
   initCombo("usr-est-txt", opEst, (o) => { $("#usr-est").value = o.valor; }, "Buscar establecimiento...");
@@ -781,42 +1208,89 @@ async function panelAdminUsuarios() {
         clave: $("#usr-clave").value, email: $("#usr-correo").value, establecimiento: $("#usr-est").value,
       });
       panelAdminUsuarios();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
-  document.querySelectorAll("[data-elim-usr]").forEach((b) => {
-    b.onclick = async () => {
-      const fila = b.closest("tr");
-      const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
-      const si = await confirmarMensaje(`¿Eliminar al usuario ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar usuario", "Eliminar", true);
-      if (!si) return;
-      try {
-        await API.eliminarUsuario(b.dataset.elimUsr);
-        panelAdminUsuarios();
-      } catch (err) { mostrarMensaje(err.message); }
-    };
-  });
-  const buscarUsr = () => {
-    const q = ($("#buscador-usr").value || "").trim().toLowerCase();
+  let usrEditandoId = null;
+  initCombo("usr-edit-est-txt", opEst, (o) => { $("#usr-edit-est").value = o.valor; }, "Buscar establecimiento...");
+  $("#btn-cancelar-edit-usr").onclick = () => {
+    usrEditandoId = null;
+    $("#form-editar-usr").classList.add("oculta");
+  };
+  $("#btn-guardar-edit-usr").onclick = async () => {
+    if (!usrEditandoId) return;
+    try {
+      await API.actualizarUsuario(usrEditandoId, {
+        nombre: $("#usr-edit-nombre").value,
+        rol: $("#usr-edit-rol").value,
+        email: $("#usr-edit-correo").value,
+        establecimiento: $("#usr-edit-est").value,
+      });
+      mostrarMensaje("Usuario actualizado", "ok");
+      panelAdminUsuarios();
+    } catch (err) { mostrarMensaje(err.message, "error"); }
+  };
+  const normUsr = (v) => String(v || "").toLowerCase().trim();
+  const renderUsuarios = () => {
+    const q = normUsr($("#buscador-usr").value);
     const r = $("#filtro-rol-usr").value;
     const e = $("#filtro-est-usr").value;
-    let total = 0;
-    document.querySelectorAll("#contenido tbody tr").forEach((tr) => {
-      const coincide =
-        (!q || (tr.dataset.busq || "").includes(q)) &&
-        (!r || tr.dataset.rol === r) &&
-        (!e || tr.dataset.est === e);
-      tr.style.display = coincide ? "" : "none";
-      if (coincide) total++;
+    const lista = usuarios.filter((u) => {
+      const estId = u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "";
+      const texto = normUsr([
+        u.nombre, u.rut, u.rol, u.email,
+        u.establecimiento ? (u.establecimiento.nombre || "") : "",
+        u.establecimiento ? (u.establecimiento.codigo || "") : "",
+      ].join(" "));
+      return (!q || texto.includes(q)) && (!r || u.rol === r) && (!e || estId === e);
     });
+    const p = paginarUI(lista, "usuarios");
+    $("#usr-tabla").innerHTML = `<table><thead><tr><th>RUT</th><th>Nombre</th><th>Rol</th><th>Establecimiento</th><th>Correo</th><th>Acciones</th></tr></thead>
+      <tbody>${p.items.length
+        ? p.items.map((u) => `<tr>
+        <td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.rol)}</td><td>${esc(u.establecimiento ? (u.establecimiento.nombre || u.establecimiento) : "-")}</td><td>${esc(u.email || "-")}</td>
+        <td><button class="btn btn-mini" data-edit-usr="${esc(u._id)}">Editar</button> <button class="btn btn-err2 btn-mini" data-elim-usr="${esc(u._id)}" ${u._id === (API.usuario && API.usuario._id) ? "disabled" : ""}>Eliminar</button></td></tr>`).join("")
+        : `<tr><td colspan="6" class="muted">Sin usuarios.</td></tr>`}</tbody></table>
+      ${htmlPaginacion("usuarios", p)}`;
+    document.querySelectorAll("[data-elim-usr]").forEach((b) => {
+      b.onclick = async () => {
+        const fila = b.closest("tr");
+        const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
+        const si = await confirmarMensaje(`¿Eliminar al usuario ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar usuario", "Eliminar", true);
+        if (!si) return;
+        try {
+          await API.eliminarUsuario(b.dataset.elimUsr);
+          panelAdminUsuarios();
+        } catch (err) { mostrarMensaje(err.message, "error"); }
+      };
+    });
+    document.querySelectorAll("[data-edit-usr]").forEach((b) => {
+      b.onclick = () => {
+        const u = usuarios.find((x) => String(x._id) === String(b.dataset.editUsr));
+        if (!u) return;
+        usrEditandoId = u._id;
+        $("#usr-edit-rut").value = u.rut || "";
+        $("#usr-edit-nombre").value = u.nombre || "";
+        $("#usr-edit-rol").value = u.rol || "lector";
+        $("#usr-edit-correo").value = u.email || "";
+        const estId = u.establecimiento ? String(u.establecimiento._id || u.establecimiento) : "";
+        $("#usr-edit-est").value = estId;
+        const estObj = est.find((e) => String(e._id) === estId);
+        $("#usr-edit-est-txt").value = estObj ? `${estObj.codigo} - ${estObj.nombre}` : "";
+        $("#form-editar-usr").classList.remove("oculta");
+        $("#form-editar-usr").scrollIntoView({ behavior: "smooth", block: "start" });
+      };
+    });
+    conectarPaginacion(renderUsuarios);
     const aviso = document.getElementById("usr-sin-resultados");
-    if (aviso) aviso.classList.toggle("oculta", !((q || r || e) && total === 0));
+    if (aviso) aviso.classList.toggle("oculta", !((q || r || e) && lista.length === 0));
     const contador = document.getElementById("cont-usr");
-    if (contador) contador.textContent = total + " usuario(s)";
+    if (contador) contador.textContent = lista.length + " usuario(s)";
   };
+  const buscarUsr = () => { reiniciarPaginaUI("usuarios"); renderUsuarios(); };
   $("#buscador-usr").addEventListener("input", buscarUsr);
   $("#filtro-rol-usr").addEventListener("change", buscarUsr);
   $("#filtro-est-usr").addEventListener("change", buscarUsr);
-  buscarUsr();
+  renderUsuarios();
 }
 
 let __actEditando = null;
@@ -918,13 +1392,7 @@ async function panelAdminActividades() {
     seccionNombre: a.seccion && secPorId[a.seccion] ? secPorId[a.seccion].nombre : "Sin sección",
   }));
 
-  const grupos = [];
-  secs.forEach((s) => {
-    const items = actConvSeccion.filter((a) => String(a.seccion) === String(s._id));
-    if (items.length) grupos.push({ seccion: s.nombre, items });
-  });
-  const libres = actConvSeccion.filter((a) => !a.seccion);
-  if (libres.length) grupos.push({ seccion: "Sin sección", items: libres });
+  const estadoAct = { q: "" };
 
   contenido(
     `<div class="encabezado"><h2 class="pagina">Actividades</h2>
@@ -964,124 +1432,122 @@ async function panelAdminActividades() {
        <button class="btn btn-mini" id="btn-cancelar-act">Cancelar</button>
      </div>
 
-     ${grupos.map((g, gi) => `
-       <div class="tarjeta sec-tarjeta">
-        <button type="button" class="sec-titulo" data-toggle-sec="${gi}" aria-expanded="false">
-          <span class="act-chevron">&#9656;</span><span class="sec-nombre-titulo">${esc(g.seccion)}</span>
-          <span class="badge-rol">${g.items.length} ${g.items.length === 1 ? "actividad" : "actividades"}</span>
-        </button>
-        <div class="sec-desg oculta" id="sec-det-${gi}">
-        ${g.items.map((a) => {
-          const idA = String(a._id);
-          const ahora = new Date();
-          const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
-          const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
-          const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
-          const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
-          const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
-          return `<div class="tarjeta act-tarjeta">
-           <button type="button" class="act-titulo" data-toggle="${idA}" aria-expanded="false">
-             <span class="act-chevron">&#9656;</span><span class="act-nombre-titulo">${esc(a.nombre)}</span> <span class="badge-rol">${esc(a.area)}</span>
-           </button>
-           <div class="act-desg oculta" id="act-det-${idA}">
-             <div class="act-grid">
-               <div class="act-campo"><span class="act-label">Categorias</span><span>${renderCategorias(a)}</span></div>
-               <div class="act-campo"><span class="act-label">Seccion</span><span>${esc(a.seccionNombre)}</span></div>
-               <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
-               <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
-               <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
-               ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
-             </div>
-             <div class="act-desglose">
-               <h4 class="act-labdesg">Estudiantes por categoria</h4>
-               <table class="tabla-desglose">
-                 <thead><tr><th>Categoria</th><th>Total</th><th>Varones</th><th>Damas</th></tr></thead>
-                 <tbody>${filasDesglose(a, idA)}${totalesFila(a, idA)}</tbody>
-               </table>
-             </div>
-             <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
-             ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
+     <div id="act-lista"></div>`
+  );
+
+  const renderListaActividades = () => {
+    const q = estadoAct.q.trim().toLowerCase();
+    const filtradas = q
+      ? actConvSeccion.filter((a) => String(a.nombre || "").toLowerCase().includes(q))
+      : actConvSeccion;
+    const p = paginarUI(filtradas, "actividades");
+    const grupos = [];
+    secs.forEach((s) => {
+      const items = p.items.filter((a) => String(a.seccion) === String(s._id));
+      if (items.length) grupos.push({ seccion: s.nombre, items });
+    });
+    const libres = p.items.filter((a) => !a.seccion);
+    if (libres.length) grupos.push({ seccion: "Sin sección", items: libres });
+
+    $("#act-lista").innerHTML = grupos.length
+      ? grupos.map((g, gi) => `
+        <div class="tarjeta sec-tarjeta">
+         <button type="button" class="sec-titulo" data-toggle-sec="${gi}" aria-expanded="false">
+           <span class="act-chevron">&#9656;</span><span class="sec-nombre-titulo">${esc(g.seccion)}</span>
+           <span class="badge-rol">${g.items.length} ${g.items.length === 1 ? "actividad" : "actividades"}</span>
+         </button>
+         <div class="sec-desg oculta" id="sec-det-${gi}">
+         ${g.items.map((a) => {
+           const idA = String(a._id);
+           const ahora = new Date();
+           const abierta = a.estado === "en_inscripcion" || a.estado === "publicada";
+           const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
+           const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
+           const dentroVentana = (!inicio || ahora >= inicio) && (!fin || ahora <= fin);
+           const estadoIns = (abierta && dentroVentana) ? "Inscripciones Abiertas" : "Cerrada";
+           return `<div class="tarjeta act-tarjeta">
+            <button type="button" class="act-titulo" data-toggle="${idA}" aria-expanded="false">
+              <span class="act-chevron">&#9656;</span><span class="act-nombre-titulo">${esc(a.nombre)}</span> <span class="badge-rol">${esc(a.area)}</span>
+            </button>
+            <div class="act-desg oculta" id="act-det-${idA}">
+              <div class="act-grid">
+                <div class="act-campo"><span class="act-label">Categorias</span><span>${renderCategorias(a)}</span></div>
+                <div class="act-campo"><span class="act-label">Seccion</span><span>${esc(a.seccionNombre)}</span></div>
+                <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
+                <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
+                <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
+                ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
+              </div>
+              <div class="act-desglose">
+                <h4 class="act-labdesg">Estudiantes por categoria</h4>
+                <table class="tabla-desglose">
+                  <thead><tr><th>Categoria</th><th>Total</th><th>Varones</th><th>Damas</th></tr></thead>
+                  <tbody>${filasDesglose(a, idA)}${totalesFila(a, idA)}</tbody>
+                </table>
+              </div>
+              <p class="muted act-fila"><span class="estado ${dentroVentana ? "est-activo" : "est-cancelado"}">${estadoIns}</span>
+              ${inicio ? ` Apertura: ${inicio.toLocaleDateString("es-CL")}` : ""}${fin ? ` | Cierre: ${fin.toLocaleDateString("es-CL")}` : ""}</p>
 <div class="seccion">
                 <button class="btn btn-mini" data-editar-act="${idA}">Editar</button>
                 <button class="btn btn-mini btn-peligro" data-eliminar-act="${idA}">Eliminar</button>
               </div>
-           </div>
-         </div>`;
-        }).join("")}
-        </div>
-      </div>`).join("")}`
-  );
+            </div>
+          </div>`;
+         }).join("")}
+         </div>
+       </div>`).join("") + htmlPaginacion("actividades", p)
+      : `<div class="tarjeta"><p class="muted">Sin actividades para mostrar.</p></div>`;
 
-  document.querySelectorAll(".sec-titulo").forEach((b) => {
-    b.onclick = () => {
-      const det = document.getElementById(`sec-det-${b.dataset.toggleSec}`);
-      const abierto = !det.classList.contains("oculta");
-      det.classList.toggle("oculta", abierto);
-      b.setAttribute("aria-expanded", String(!abierto));
-      b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
-    };
-  });
-  document.querySelectorAll(".act-titulo").forEach((b) => {
-    b.onclick = () => {
-      const det = document.getElementById(`act-det-${b.dataset.toggle}`);
-      const abierto = !det.classList.contains("oculta");
-      det.classList.toggle("oculta", abierto);
-      b.setAttribute("aria-expanded", String(!abierto));
-      b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
-    };
-  });
-  document.querySelectorAll("[data-editar-act]").forEach((b) => {
-    b.onclick = () => {
-      const a = act.find((x) => String(x._id) === String(b.dataset.editarAct));
-      if (!a) return;
-      abrirFormActividad(a);
-    };
-  });
-  document.querySelectorAll("[data-eliminar-act]").forEach((b) => {
-    b.onclick = async () => {
-      if (!await confirmarMensaje("Seguro que desea eliminar esta actividad?")) return;
-      try {
-        await API.eliminarActividad(b.dataset.eliminarAct);
-        panelAdminActividades();
-      } catch (err) { mostrarMensaje(err.message); }
-    };
-  });
+    document.querySelectorAll(".sec-titulo").forEach((b) => {
+      b.onclick = () => {
+        const det = document.getElementById(`sec-det-${b.dataset.toggleSec}`);
+        const abierto = !det.classList.contains("oculta");
+        det.classList.toggle("oculta", abierto);
+        b.setAttribute("aria-expanded", String(!abierto));
+        b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+      };
+    });
+    document.querySelectorAll(".act-titulo").forEach((b) => {
+      b.onclick = () => {
+        const det = document.getElementById(`act-det-${b.dataset.toggle}`);
+        const abierto = !det.classList.contains("oculta");
+        det.classList.toggle("oculta", abierto);
+        b.setAttribute("aria-expanded", String(!abierto));
+        b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+      };
+    });
+    document.querySelectorAll("[data-editar-act]").forEach((b) => {
+      b.onclick = () => {
+        const a = act.find((x) => String(x._id) === String(b.dataset.editarAct));
+        if (!a) return;
+        abrirFormActividad(a);
+      };
+    });
+    document.querySelectorAll("[data-eliminar-act]").forEach((b) => {
+      b.onclick = async () => {
+        if (!await confirmarMensaje("Seguro que desea eliminar esta actividad?")) return;
+        try {
+          await API.eliminarActividad(b.dataset.eliminarAct);
+          panelAdminActividades();
+        } catch (err) { mostrarMensaje(err.message, "error"); }
+      };
+    });
+    conectarPaginacion(renderListaActividades);
+
+    const aviso = document.getElementById("act-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !(q && filtradas.length === 0));
+    const contador = document.getElementById("cont-acts");
+    if (contador) contador.textContent = filtradas.length + " actividad(es)";
+  };
 
   const buscarAct = () => {
-    const q = ($("#buscador-acts").value || "").trim().toLowerCase();
-    let totalVisibles = 0;
-    document.querySelectorAll("#contenido .sec-tarjeta").forEach((sec) => {
-      let visibles = 0;
-      sec.querySelectorAll(".act-tarjeta").forEach((card) => {
-        const nombre = card.querySelector(".act-nombre-titulo")?.textContent || "";
-        const coincide = !q || nombre.toLowerCase().includes(q);
-        card.style.display = coincide ? "" : "none";
-        if (coincide) visibles++;
-      });
-      sec.style.display = visibles ? "" : "none";
-      if (visibles) totalVisibles += visibles;
-      if (q && visibles) {
-        const desg = sec.querySelector(".sec-desg");
-        if (desg) desg.classList.remove("oculta");
-        sec.querySelector(".sec-titulo")?.setAttribute("aria-expanded", "true");
-        sec.querySelectorAll(".act-tarjeta").forEach((card) => {
-          if (card.style.display !== "none") {
-            const d = card.querySelector(".act-desg");
-            if (d) d.classList.remove("oculta");
-            card.querySelector(".act-titulo")?.setAttribute("aria-expanded", "true");
-          }
-        });
-      } else if (!q) {
-        sec.querySelectorAll(".act-tarjeta").forEach((c) => { c.style.display = ""; });
-      }
-    });
-    const aviso = document.getElementById("act-sin-resultados");
-    if (aviso) aviso.classList.toggle("oculta", !(q && totalVisibles === 0));
-    const contador = document.getElementById("cont-acts");
-    if (contador) contador.textContent = totalVisibles + " actividad(es)";
+    estadoAct.q = $("#buscador-acts").value || "";
+    reiniciarPaginaUI("actividades");
+    renderListaActividades();
   };
   $("#buscador-acts").addEventListener("input", buscarAct);
-  buscarAct();
+  renderListaActividades();
+
 
   $("#btn-nuevo-act").onclick = () => { abrirFormActividad(null); };
   $("#btn-nueva-area").onclick = async () => {
@@ -1091,7 +1557,7 @@ async function panelAdminActividades() {
       await API.agregarArea(nombre.trim());
       await cargarCatalogos();
       panelAdminActividades();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   $("#btn-seccion-act").onclick = async () => {
     const nombre = prompt("Nombre de la nueva seccion:");
@@ -1100,7 +1566,7 @@ async function panelAdminActividades() {
     try {
       await API.crearSeccion({ nombre, area });
       panelAdminActividades();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   $("#btn-cancelar-act").onclick = () => {
     __actEditando = null;
@@ -1130,7 +1596,7 @@ async function panelAdminActividades() {
       }
       __actEditando = null;
       panelAdminActividades();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
 }
 
@@ -1156,8 +1622,9 @@ function abrirFormActividad(a) {
 async function panelHistorialTorneos() {
   const todos = await API.torneos();
   const finalizados = todos.filter((t) => t.estado === "finalizado");
+  const pagina = paginarUI(finalizados, "histTorneos");
   const porAnio = {};
-  finalizados.forEach((t) => {
+  pagina.items.forEach((t) => {
     (porAnio[t.anio] = porAnio[t.anio] || []).push(t);
   });
   const anios = Object.keys(porAnio).sort((a, b) => b - a);
@@ -1196,14 +1663,15 @@ async function panelHistorialTorneos() {
   contenido(
     `<div class="encabezado"><h2 class="pagina">Historial de Torneos</h2><button class="btn btn-primario2" id="btn-volver-historial">Volver</button></div>
      <div class="encabezado-botones"></div>
-     ${anios.length ? bloques.join("") : `<div class="tarjeta"><p class="muted">Aun no hay torneos finalizados.</p></div>`}`
+     ${anios.length ? bloques.join("") + htmlPaginacion("histTorneos", pagina) : `<div class="tarjeta"><p class="muted">Aun no hay torneos finalizados.</p></div>`}`
   );
+  conectarPaginacion(panelHistorialTorneos);
   $("#btn-volver-historial").onclick = () => CargarPanel(panelAdminTorneos);
   document.querySelectorAll("[data-det-hist]").forEach((b) => {
     b.onclick = () => toggleDetalleHistorial(b.dataset.detHist, b);
   });
   document.querySelectorAll("[data-mapa-hist]").forEach((b) => {
-    b.onclick = () => abrirMapaTorneo(b.dataset.mapaHist, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
+    b.onclick = () => abrirMapaTorneo(b.dataset.mapaHist, b.dataset.nombre).catch((err) => mostrarMensaje(err.message, "error"));
   });
 }
 
@@ -1338,6 +1806,7 @@ async function panelAdminTorneos() {
   const tor = torTodos.filter((t) => t.estado !== "finalizado");
   window.__actividadesAdmin = act;
   const opActCat = opcionesActividadCategoria(act);
+  const estadoTor = { q: "" };
   contenido(
     `<div class="encabezado"><h2 class="pagina">Torneos y Sorteo</h2><div class="encabezado-botones"><button class="btn btn-mini" id="btn-historial-tor">Historial</button><button class="btn btn-primario2" id="btn-nuevo-tor">+ Nuevo Torneo</button></div></div>
      <div class="act-buscador">
@@ -1353,13 +1822,22 @@ async function panelAdminTorneos() {
        </div>
        <button class="btn btn-ok" id="btn-guardar-tor">Guardar</button>
      </div>
-${tor.map((t) => {
+     <div id="tor-lista"></div>`
+  );
+
+  const renderListaTorneos = () => {
+    const q = estadoTor.q.trim().toLowerCase();
+    const filtrados = q
+      ? tor.filter((t) => String(t.nombre || "").toLowerCase().includes(q))
+      : tor;
+    const p = paginarUI(filtrados, "torneos");
     const runLabel = {
       activo: "Activo", en_curso: "En curso", inscripciones: "Inscripciones",
       pausado: "Pausado", postergado: "Postergado", suspendido: "Suspendido",
       cancelado: "Cancelado", finalizado: "Finalizado",
     };
-    return `<div class="tarjeta tor-tarjeta" id="tor-tarjeta-${t._id}">
+    $("#tor-lista").innerHTML = p.items.length
+      ? p.items.map((t) => `<div class="tarjeta tor-tarjeta" id="tor-tarjeta-${t._id}">
        <h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "Sin categoria")}</span> <span class="badge-rol badge-formato-${t.formato === "competitivo" ? "competitivo" : "amistoso"}">${esc(t.formato === "competitivo" ? "Competitivo" : "Amistoso")}</span> ${t.estado === "suspendido" ? `<span class="badge-estado-tor est-suspendido">Suspendido</span>` : `<span class="badge-estado-tor">${esc(runLabel[t.estado] || t.estado)}</span>`}</h3>
        <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | ${esc(t.anio)} | Llave unica</p>
        ${programacionTorneoResumen(t)}
@@ -1371,9 +1849,69 @@ ${tor.map((t) => {
        <button class="btn btn-mini" data-suspender-torneo="${t._id}" data-nombre="${esc(t.nombre)}" data-estado="${esc(t.estado || "programado")}">${t.estado === "suspendido" ? "Reactivar" : "Suspender"}</button>
        <button class="btn btn-mini btn-peligro" data-eliminar-torneo="${t._id}" data-nombre="${esc(t.nombre)}">Eliminar definitivamente</button></div>
        <div class="form-programar oculta" data-form-programar="${t._id}" data-torneo-nombre="${esc(t.nombre)}" data-torneo-actividad="${esc(t.actividad ? t.actividad._id || t.actividad : "")}"></div>
-      </div>`;
-  }).join("")}`
-  );
+      </div>`).join("") + htmlPaginacion("torneos", p)
+      : `<div class="tarjeta"><p class="muted">Sin torneos para mostrar.</p></div>`;
+
+    document.querySelectorAll("[data-equipos]").forEach((b) => {
+      b.onclick = () => panelAdminEquipos(b.dataset.equipos);
+    });
+    document.querySelectorAll("[data-partidos]").forEach((b) => {
+      b.onclick = () => verPartidos(b.dataset.partidos, b.dataset.nombre || "Partidos", b.dataset.formato || "amistoso");
+    });
+    document.querySelectorAll("[data-llaves]").forEach((b) => {
+      b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message, "error"));
+    });
+    // Suspender/Reactivar: reversible. Suspender impide nuevas inscripciones del
+    // coordinador (el torneo queda fuera de su panel) hasta que se reactive.
+    document.querySelectorAll("[data-suspender-torneo]").forEach((b) => {
+      b.onclick = async () => {
+        const idT = b.dataset.suspenderTorneo;
+        const esSuspendido = b.dataset.estado === "suspendido";
+        const accion = esSuspendido ? "REACTIVAR" : "SUSPENDER";
+        const msj = esSuspendido
+          ? "Reactivar el torneo. Los coordinadores podran volver a inscribir estudiantes."
+          : "Suspender el torneo. Los coordinadores no podran inscribir estudiantes hasta que se reactive.";
+        if (!await confirmarMensaje(`Esta seguro de ${accion} el torneo?\n\n${msj}`)) return;
+        try {
+          if (esSuspendido) await API.reactivarTorneo(idT);
+          else await API.suspenderTorneo(idT);
+          panelAdminTorneos();
+        } catch (err) { mostrarMensaje(err.message, "error"); }
+      };
+    });
+    // Eliminacion definitiva: borra el torneo y todo lo que dependia de el
+    // (equipos, posiciones, inscripciones y la referencia en los alumnos).
+    document.querySelectorAll("[data-eliminar-torneo]").forEach((b) => {
+      b.onclick = async () => {
+        const idT = b.dataset.eliminarTorneo;
+        const nombre = b.dataset.nombre || "el torneo";
+        if (!await confirmarMensaje(`BORRADO DEFINITIVO de "${nombre}".\n\nSe eliminaran el torneo, sus equipos, posiciones, inscripciones y la referencia en los estudiantes. Esta accion NO se puede deshacer.\n\nContinuar?`)) return;
+        try {
+          await API.eliminarTorneo(idT);
+          panelAdminTorneos();
+        } catch (err) { mostrarMensaje(err.message, "error"); }
+      };
+    });
+    document.querySelectorAll("[data-programar]").forEach((b) => {
+      b.onclick = () => {
+        const torneoId = b.dataset.programar;
+        const box = document.querySelector(`[data-form-programar="${torneoId}"]`);
+        if (!box) return;
+        if (box.innerHTML === "") {
+          const torneo = (window.__torneosProgramables || []).find((t) => String(t._id) === String(torneoId));
+          box.innerHTML = formProgramarTorneo(torneo);
+        }
+        box.classList.toggle("oculta");
+      };
+    });
+    conectarPaginacion(renderListaTorneos);
+
+    const aviso = document.getElementById("tor-sin-resultados");
+    if (aviso) aviso.classList.toggle("oculta", !(q && filtrados.length === 0));
+    const contador = document.getElementById("cont-tors");
+    if (contador) contador.textContent = filtrados.length + " torneo(s)";
+  };
+
   $("#btn-nuevo-tor").onclick = () => $("#form-nuevo-tor").classList.toggle("oculta");
   $("#btn-historial-tor").onclick = () => CargarPanel(panelHistorialTorneos);
   initCombo("tor-act-txt", opActCat, (o) => {
@@ -1397,60 +1935,8 @@ ${tor.map((t) => {
         formulario: {},
       });
       panelAdminTorneos();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
-  document.querySelectorAll("[data-equipos]").forEach((b) => {
-    b.onclick = () => panelAdminEquipos(b.dataset.equipos);
-  });
-  document.querySelectorAll("[data-partidos]").forEach((b) => {
-    b.onclick = () => verPartidos(b.dataset.partidos, b.dataset.nombre || "Partidos", b.dataset.formato || "amistoso");
-  });
-  document.querySelectorAll("[data-llaves]").forEach((b) => {
-    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
-  });
-  // Suspender/Reactivar: reversible. Suspender impide nuevas inscripciones del
-  // coordinador (el torneo queda fuera de su panel) hasta que se reactive.
-  document.querySelectorAll("[data-suspender-torneo]").forEach((b) => {
-    b.onclick = async () => {
-      const idT = b.dataset.suspenderTorneo;
-      const esSuspendido = b.dataset.estado === "suspendido";
-      const accion = esSuspendido ? "REACTIVAR" : "SUSPENDER";
-      const msj = esSuspendido
-        ? "Reactivar el torneo. Los coordinadores podran volver a inscribir estudiantes."
-        : "Suspender el torneo. Los coordinadores no podran inscribir estudiantes hasta que se reactive.";
-      if (!await confirmarMensaje(`Esta seguro de ${accion} el torneo?\n\n${msj}`)) return;
-      try {
-        if (esSuspendido) await API.reactivarTorneo(idT);
-        else await API.suspenderTorneo(idT);
-        panelAdminTorneos();
-      } catch (err) { mostrarMensaje(err.message); }
-    };
-  });
-  // Eliminacion definitiva: borra el torneo y todo lo que dependia de el
-  // (equipos, posiciones, inscripciones y la referencia en los alumnos).
-  document.querySelectorAll("[data-eliminar-torneo]").forEach((b) => {
-    b.onclick = async () => {
-      const idT = b.dataset.eliminarTorneo;
-      const nombre = b.dataset.nombre || "el torneo";
-      if (!await confirmarMensaje(`BORRADO DEFINITIVO de "${nombre}".\n\nSe eliminaran el torneo, sus equipos, posiciones, inscripciones y la referencia en los estudiantes. Esta accion NO se puede deshacer.\n\nContinuar?`)) return;
-      try {
-        await API.eliminarTorneo(idT);
-        panelAdminTorneos();
-      } catch (err) { mostrarMensaje(err.message); }
-    };
-  });
-  document.querySelectorAll("[data-programar]").forEach((b) => {
-    b.onclick = () => {
-      const torneoId = b.dataset.programar;
-      const box = document.querySelector(`[data-form-programar="${torneoId}"]`);
-      if (!box) return;
-      if (box.innerHTML === "") {
-        const torneo = (window.__torneosProgramables || []).find((t) => String(t._id) === String(torneoId));
-        box.innerHTML = formProgramarTorneo(torneo);
-      }
-      box.classList.toggle("oculta");
-    };
-  });
 
   // Delegacion: guardar programacion y toggle de requisitos del formulario.
   const torCont = document.querySelector("#vista-contenido") || document.body;
@@ -1526,22 +2012,13 @@ ${tor.map((t) => {
   window.__torneosProgramables = tor;
 
   const buscarTor = () => {
-    const q = ($("#buscador-tors").value || "").trim().toLowerCase();
-    let total = 0;
-    tor.forEach((t) => {
-      const card = document.getElementById(`tor-tarjeta-${t._id}`);
-      if (!card) return;
-      const coincide = !q || t.nombre.toLowerCase().includes(q);
-      card.style.display = coincide ? "" : "none";
-      if (coincide) total++;
-    });
-    const aviso = document.getElementById("tor-sin-resultados");
-    if (aviso) aviso.classList.toggle("oculta", !(q && total === 0));
-    const contador = document.getElementById("cont-tors");
-    if (contador) contador.textContent = total + " torneo(s)";
+    estadoTor.q = $("#buscador-tors").value || "";
+    reiniciarPaginaUI("torneos");
+    renderListaTorneos();
   };
   $("#buscador-tors").addEventListener("input", buscarTor);
-  buscarTor();
+  renderListaTorneos();
+
 }
 
 // Rersumen de la programacion del torneo (fechas y requisitos).
@@ -1631,7 +2108,8 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
   }
 
   const grupos = {};
-  visibles.forEach((l) => {
+  const pPartidos = paginarUI(visibles, "partidos");
+  pPartidos.items.forEach((l) => {
     const fase = aTexto(l);
     (grupos[fase] = grupos[fase] || []).push(l);
   });
@@ -1676,8 +2154,10 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
     `<div class="encabezado"><h2 class="pagina">Partidos del Torneo</h2>
        <button class="btn btn-mini" id="btn-volver-partidos">Volver</button></div>
      <h3 class="nombre-torneo">${esc(nombreTorneo)}</h3>
-     ${cuerpoPartidos}`
+     ${cuerpoPartidos}
+     ${fasesOrden.length ? htmlPaginacion("partidos", pPartidos) : ""}`
   );
+  conectarPaginacion(() => verPartidos(torneoId, nombreTorneo, formato, llaveIdFoco));
   $("#btn-volver-partidos").onclick = () => panelAdminTorneos();
   document.querySelectorAll("[data-toggle-fase]").forEach((b) => {
     b.onclick = () => {
@@ -1708,7 +2188,7 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
         });
         mostrarMensaje("Horario guardado");
         verPartidos(torneoId, nombreTorneo);
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 
@@ -1785,7 +2265,7 @@ async function generarBracket() {
     mostrarMensaje(`Eliminatorias generadas (${res.totalRondas} ronda${res.totalRondas > 1 ? "s" : ""})`);
     panelAdminEquipos(torneoId);
   } catch (err) {
-    mostrarMensaje(err.message);
+    mostrarMensaje(err.message, "error");
   }
 }
 
@@ -1834,9 +2314,7 @@ async function panelAdminEquipos(torneoId) {
           <h3 class="subtitulo-seccion">Equipos actuales (${equipos.length})</h3>
           <div class="campo"><label for="eq-buscar">Buscar equipo o alumno</label>
             <input id="eq-buscar" type="search" placeholder="Nombre del equipo o del alumno..." autocomplete="off"></div>
-          <div id="eq-lista">
-          ${equipos.length ? equipos.map((e) => tarjetaEquipo(e, pool.pool)).join("") : '<p class="muted">Aun no hay equipos en este torneo.</p>'}
-          </div>
+          <div id="eq-lista"></div>
         </div>
        <div class="eq-col eq-col-acciones">
           <div class="tarjeta">
@@ -1897,35 +2375,43 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
       inp.addEventListener("input", () => { delete inp.dataset.valor; });
     });
   };
-  initCombosAgregar();
+  const estadoEq = { q: "" };
+  const renderEquipos = () => {
+    const q = (estadoEq.q || "").trim().toLowerCase();
+    const filtrados = equipos.filter((e) => {
+      if (!q) return true;
+      if ((e.nombre || "").toLowerCase().includes(q)) return true;
+      return (e.alumnos || []).some((a) => (a.nombre || "").toLowerCase().includes(q));
+    });
+    const p = paginarUI(filtrados, "equipos");
+    const lista = document.getElementById("eq-lista");
+    if (lista) {
+      lista.innerHTML = p.items.length
+        ? p.items.map((e) => tarjetaEquipo(e, pool.pool)).join("") + htmlPaginacion("equipos", p)
+        : '<p class="muted">Aun no hay equipos en este torneo.</p>';
+      initCombosAgregar();
+      conectarPaginacion(renderEquipos, lista);
+    }
+    const h3 = document.querySelector(".eq-col-equipos .subtitulo-seccion");
+    if (h3) h3.textContent = q
+      ? `Equipos actuales (${filtrados.length} de ${equipos.length})`
+      : `Equipos actuales (${equipos.length})`;
+  };
   const buscador = document.getElementById("eq-buscar");
-  if (buscador && equipos.length) {
+  if (buscador) {
     buscador.addEventListener("input", () => {
-      const q = buscador.value.trim().toLowerCase();
-      const filtrados = equipos.filter((e) => {
-        if (!q) return true;
-        if ((e.nombre || "").toLowerCase().includes(q)) return true;
-        return (e.alumnos || []).some((a) => (a.nombre || "").toLowerCase().includes(q));
-      });
-      const lista = document.getElementById("eq-lista");
-      if (lista) {
-        lista.innerHTML = filtrados.length
-          ? filtrados.map((e) => tarjetaEquipo(e, pool.pool)).join("")
-          : '<p class="muted">Sin coincidencias.</p>';
-        initCombosAgregar();
-      }
-      const h3 = document.querySelector(".eq-col-equipos .subtitulo-seccion");
-      if (h3) h3.textContent = q
-        ? `Equipos actuales (${filtrados.length} de ${equipos.length})`
-        : `Equipos actuales (${equipos.length})`;
+      estadoEq.q = buscador.value || "";
+      reiniciarPaginaUI("equipos");
+      renderEquipos();
     });
   }
+  renderEquipos();
   $("#btn-ejecutar-sorteo-equipos").onclick = async () => {
     try {
       await API.ejecutarSorteo(torneoId);
       mostrarMensaje("Sorteo ejecutado: fase de grupos + eliminatorias automaticas");
       panelAdminEquipos(torneoId);
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   $("#btn-generar-bracket")?.addEventListener("click", generarBracket);
   $("#btn-cancelar-bracket")?.addEventListener("click", () => {
@@ -1959,7 +2445,7 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
       const global = window.mostrarMensaje || mostrarMensaje;
       global(res.mensaje || "Equipos sorteados");
       panelAdminEquipos(torneoId);
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   const manualSel = new Set();
   const pintarManual = () => {
@@ -1994,7 +2480,7 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
     try {
       await API.crearEquipo(torneoId, { nombre: $("#eq-nombre").value, alumnos });
       panelAdminEquipos(torneoId);
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   const eqLista = document.getElementById("eq-lista");
   if (eqLista) {
@@ -2019,7 +2505,7 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
           await API.actualizarEquipo(torneoId, equipoId, { alumnos });
           mostrarMensaje("Estudiante expulsado del equipo");
           panelAdminEquipos(torneoId);
-        } catch (err) { mostrarMensaje(err.message); }
+        } catch (err) { mostrarMensaje(err.message, "error"); }
         return;
       }
       const agregar = ev.target.closest("[data-agregar-btn]");
@@ -2035,14 +2521,14 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
           await API.actualizarEquipo(torneoId, equipoId, { alumnos });
           mostrarMensaje("Estudiante agregado al equipo");
           panelAdminEquipos(torneoId);
-        } catch (err) { mostrarMensaje(err.message); }
+        } catch (err) { mostrarMensaje(err.message, "error"); }
         return;
       }
       const eliminar = ev.target.closest("[data-elim-equipo]");
       if (eliminar) {
         if (!await confirmarMensaje("¿Eliminar este equipo?")) return;
         try { await API.eliminarEquipo(torneoId, eliminar.dataset.elimEquipo); panelAdminEquipos(torneoId); }
-        catch (err) { mostrarMensaje(err.message); }
+        catch (err) { mostrarMensaje(err.message, "error"); }
       }
     });
   }
@@ -2234,7 +2720,7 @@ function wcEnlazarAcciones(cont, torneoId, or) {
         await API.registrarResultadoLlave(id, { puntajeA: pa, puntajeB: pb });
         mostrarMensaje("Resultado registrado");
         await refrescarMapa();
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
   cont.querySelectorAll("[data-edit-llave]").forEach((bb) => {
@@ -2257,7 +2743,7 @@ function wcEnlazarAcciones(cont, torneoId, or) {
         await API.actualizarLlave(id, { equipos: [a, b] });
         mostrarMensaje("Emparejamiento actualizado");
         await refrescarMapa();
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 }
@@ -2462,14 +2948,7 @@ async function panelAdminInscripciones() {
        <span id="cont-ins" class="act-buscador-contador">0 inscripciones</span>
      </div>
      <p id="ins-sin-resultados" class="muted oculta" style="padding:14px">No se encontraron inscripciones.</p>
-     <div class="tarjeta"><table><thead><tr><th>Establecimiento</th><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
-     <tbody>${ins.map((i) => `<tr data-busq="${esc((((i.establecimiento ? (i.establecimiento.nombre || i.establecimiento) : "") + " " + (i.actividad ? (i.actividad.nombre || i.actividad) : "") + " " + i.division + " " + i.estado)).toLowerCase())}">
-       <td>${esc(i.establecimiento ? i.establecimiento.nombre : i.establecimiento)}</td>
-       <td>${esc(i.actividad ? i.actividad.nombre : i.actividad)}</td>
-       <td>${esc(i.division)}</td>
-       <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
-       <td>${i.estado === "en_proceso" ? `<button class="btn btn-ok btn-mini" data-acc="${i._id}" data-est="aceptada">Aceptar</button> <button class="btn btn-err2 btn-mini" data-acc="${i._id}" data-est="rechazada">Rechazar</button>` : "-"}</td>
-     </tr>`).join("")}</tbody></table></div>`
+     <div class="tarjeta"><div id="ins-tabla"></div></div>`
   );
   $("#btn-nueva-ins").onclick = () => $("#form-nueva-ins").classList.toggle("oculta");
   initCombo("ins-est-txt", opEst, (o) => { $("#ins-est").value = o.valor; }, "Buscar establecimiento...");
@@ -2484,29 +2963,45 @@ async function panelAdminInscripciones() {
       if ($("#ins-tor").value) { /* asociacion requiere endpoint aparte; se omite por simplicidad */ }
       void nuevo;
       panelAdminInscripciones();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
-  document.querySelectorAll("[data-acc]").forEach((b) => {
-    b.onclick = async () => {
-      try { await API.cambiarEstadoInscripcion(b.dataset.acc, b.dataset.est); panelAdminInscripciones(); }
-      catch (err) { mostrarMensaje(err.message); }
-    };
-  });
-  const buscarIns = () => {
-    const q = ($("#buscador-ins").value || "").trim().toLowerCase();
-    let total = 0;
-    document.querySelectorAll("#contenido tbody tr").forEach((tr) => {
-      const coincide = !q || (tr.dataset.busq || "").includes(q);
-      tr.style.display = coincide ? "" : "none";
-      if (coincide) total++;
+  const normIns = (v) => String(v || "").toLowerCase().trim();
+  const renderInscripciones = () => {
+    const q = normIns($("#buscador-ins").value);
+    const lista = ins.filter((i) => {
+      if (!q) return true;
+      const texto = normIns([
+        i.establecimiento ? (i.establecimiento.nombre || i.establecimiento) : "",
+        i.actividad ? (i.actividad.nombre || i.actividad) : "",
+        i.division, i.estado,
+      ].join(" "));
+      return texto.includes(q);
     });
+    const p = paginarUI(lista, "inscripciones");
+    $("#ins-tabla").innerHTML = `<table><thead><tr><th>Establecimiento</th><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
+      <tbody>${p.items.length ? p.items.map((i) => `<tr>
+        <td>${esc(i.establecimiento ? i.establecimiento.nombre : i.establecimiento)}</td>
+        <td>${esc(i.actividad ? i.actividad.nombre : i.actividad)}</td>
+        <td>${esc(i.division)}</td>
+        <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
+        <td>${i.estado === "en_proceso" ? `<button class="btn btn-ok btn-mini" data-acc="${i._id}" data-est="aceptada">Aceptar</button> <button class="btn btn-err2 btn-mini" data-acc="${i._id}" data-est="rechazada">Rechazar</button>` : "-"}</td>
+      </tr>`).join("") : `<tr><td colspan="5" class="muted">Sin inscripciones.</td></tr>`}</tbody></table>
+      ${htmlPaginacion("inscripciones", p)}`;
+    document.querySelectorAll("[data-acc]").forEach((b) => {
+      b.onclick = async () => {
+        try { await API.cambiarEstadoInscripcion(b.dataset.acc, b.dataset.est); panelAdminInscripciones(); }
+        catch (err) { mostrarMensaje(err.message, "error"); }
+      };
+    });
+    conectarPaginacion(renderInscripciones);
     const aviso = document.getElementById("ins-sin-resultados");
-    if (aviso) aviso.classList.toggle("oculta", !(q && total === 0));
+    if (aviso) aviso.classList.toggle("oculta", !(q && lista.length === 0));
     const contador = document.getElementById("cont-ins");
-    if (contador) contador.textContent = total + " inscripcion(es)";
+    if (contador) contador.textContent = lista.length + " inscripcion(es)";
   };
+  const buscarIns = () => { reiniciarPaginaUI("inscripciones"); renderInscripciones(); };
   $("#buscador-ins").addEventListener("input", buscarIns);
-  buscarIns();
+  renderInscripciones();
 }
 
 async function panelAdminValoraciones() {
@@ -2535,33 +3030,117 @@ async function panelAdminValoraciones() {
         estado: $("#val-estado").value, anio: new Date().getFullYear(), semestre: 1,
       });
       panelAdminValoraciones();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   const ranking = await API.ranking();
-  $("#ranking").innerHTML = Object.entries(ranking).map(([nombre, filas]) =>
-    `<div class="tarjeta"><h3>${esc(nombre)}</h3>` +
-    filas.map((f) => `<span class="stat"><strong>${esc(f.establecimiento)}</strong><br><span class="badge-rol">${esc(f.estado)} (${f.valor})</span></span>`).join("") +
-    `</div>`).join("");
+  const filasRanking = [];
+  Object.entries(ranking).forEach(([nombre, filas]) => {
+    (filas || []).forEach((f) => filasRanking.push({ actividad: nombre, ...f }));
+  });
+  const pRanking = paginarUI(filasRanking, "ranking");
+  $("#ranking").innerHTML = `<div class="tarjeta"><table><thead><tr><th>Actividad</th><th>Establecimiento</th><th>Estado</th><th>Valor</th></tr></thead>
+    <tbody>${pRanking.items.length
+      ? pRanking.items.map((f) => `<tr><td>${esc(f.actividad)}</td><td>${esc(f.establecimiento)}</td><td><span class="badge-rol">${esc(f.estado)}</span></td><td>${f.valor}</td></tr>`).join("")
+      : `<tr><td colspan="4" class="muted">Sin valoraciones registradas.</td></tr>`}</tbody></table>
+    ${htmlPaginacion("ranking", pRanking)}</div>`;
+  conectarPaginacion(panelAdminValoraciones);
+}
+
+const SOLICITUDES_UI = { tabAdmin: "pend", tabCoord: "pend" };
+
+function fechaSolicitud(valor) {
+  if (!valor) return "-";
+  const d = new Date(valor);
+  return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
+}
+
+function filaSolicitudHtml(s, conAcciones) {
+  return `<tr>
+    <td>${esc(s.tipo)}</td>
+    <td>${esc(s.detalle)}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+    <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
+    <td>${esc(s.rutSolicitante || "-")}</td>
+    <td>${esc(fechaSolicitud(s.createdAt))}</td>
+    <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
+    ${conAcciones ? `<td>
+      <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
+      <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
+    </td>` : ""}
+  </tr>`;
+}
+
+function tablaSolicitudesHtml(items, prefijo, conAcciones) {
+  const p = paginarUI(items, prefijo);
+  return `<div class="tarjeta">
+    <table><thead><tr><th>Tipo</th><th>Detalle</th><th>Establecimiento</th><th>Solicitante</th><th>Fecha</th><th>Estado</th>${conAcciones ? "<th>Acciones</th>" : ""}</tr></thead>
+    <tbody>${p.items.length
+      ? p.items.map((s) => filaSolicitudHtml(s, conAcciones)).join("")
+      : `<tr><td colspan="${conAcciones ? 7 : 6}" class="muted">Sin solicitudes.</td></tr>`}</tbody></table>
+    ${htmlPaginacion(prefijo, p)}
+  </div>`;
+}
+
+// Botones superiores: alternan entre Pendientes e Historial (reemplazan el
+// listado, no se muestran ambos a la vez).
+function tabsSolicitudesHtml(tab, pendientes, historial, scope) {
+  return `<div class="seccion">
+      <button class="btn ${tab === "pend" ? "btn-primario2" : "btn-mini"}" data-sol-tab="pend" data-sol-scope="${scope}">Pendientes (${pendientes.length})</button>
+      <button class="btn ${tab === "hist" ? "btn-primario2" : "btn-mini"}" data-sol-tab="hist" data-sol-scope="${scope}">Historial (${historial.length})</button>
+    </div>`;
+}
+
+function conectarTabsSolicitudes(scope, recargar) {
+  document.querySelectorAll(`[data-sol-scope="${scope}"]`).forEach((b) => {
+    b.onclick = () => {
+      const tab = b.dataset.solTab;
+      if (scope === "admin") SOLICITUDES_UI.tabAdmin = tab;
+      else SOLICITUDES_UI.tabCoord = tab;
+      const prefijo = scope === "admin"
+        ? (tab === "pend" ? "solPend" : "solHist")
+        : (tab === "pend" ? "solCoordPend" : "solCoordHist");
+      reiniciarPaginaUI(prefijo);
+      recargar();
+    };
+  });
 }
 
 async function panelAdminSolicitudes() {
   const sol = await API.solicitudes();
+  const pendientes = sol.filter((s) => s.estado === "en_proceso");
+  const historial = sol.filter((s) => s.estado !== "en_proceso");
+  const tab = SOLICITUDES_UI.tabAdmin;
+  const items = tab === "pend" ? pendientes : historial;
+  const prefijo = tab === "pend" ? "solPend" : "solHist";
   contenido(
-    `<h2 class="pagina">Solicitudes Pendientes</h2>
-     <div class="tarjeta"><table><thead><tr><th>Tipo</th><th>Detalle</th><th>Estado</th><th>Acciones</th></tr></thead>
-     <tbody>${sol.map((s) => `<tr>
-       <td>${esc(s.tipo)}</td>
-       <td>${esc(s.detalle)}</td>
-       <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
-       <td>${s.estado === "en_proceso" ? `<button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button> <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>` : "-"}</td>
-     </tr>`).join("")}</tbody></table></div>`
+    `<h2 class="pagina">Solicitudes</h2>
+     <p class="muted">Apruebe o rechace las solicitudes enviadas por los coordinadores. El estudiante se agrega a la nomina solo cuando la solicitud es aprobada.</p>
+     ${tabsSolicitudesHtml(tab, pendientes, historial, "admin")}
+     <h3 class="pagina">${tab === "pend" ? "Pendientes" : "Historial"} (${items.length})</h3>
+     ${tablaSolicitudesHtml(items, prefijo, tab === "pend")}`
   );
+  conectarTabsSolicitudes("admin", panelAdminSolicitudes);
+  conectarPaginacion(panelAdminSolicitudes);
   document.querySelectorAll("[data-sol-acc]").forEach((b) => {
     b.onclick = async () => {
+      const estado = b.dataset.solEst;
+      if (estado === "rechazada") {
+        const ok = await confirmarMensaje(
+          "Se rechazara esta solicitud y el estudiante no sera agregado a la nomina.",
+          "Rechazar solicitud",
+          "Rechazar",
+          true
+        );
+        if (!ok) return;
+      }
       try {
-        await API.responderSolicitud(b.dataset.solAcc, b.dataset.solEst, "");
+        const r = await API.responderSolicitud(
+          b.dataset.solAcc,
+          estado,
+          estado === "aprobada" ? "Aprobada por el Admin DAEM" : "Rechazada por el Admin DAEM"
+        );
+        mostrarMensaje(r.mensaje || "Solicitud respondida", "ok");
         panelAdminSolicitudes();
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 }
@@ -2635,7 +3214,8 @@ async function panelAdminAgenda() {
     const mostrando = buscar ? "Resultados de busqueda" : (seleccionDia ? `Torneos del ${seleccionDia}` : "Torneos de hoy");
     const puedeEditar = API.usuario && API.usuario.rol === "admin";
 
-    const lista = filtrados.length ? filtrados.map((ev) => `
+    const p = paginarUI(filtrados, "agenda");
+    const lista = p.items.length ? p.items.map((ev) => `
       <div class="item-agenda">
         <div class="item-agenda-cuerpo">
           <strong>${esc(ev.torneo)}</strong>
@@ -2650,7 +3230,8 @@ async function panelAdminAgenda() {
 
     return `
       <div class="separador-agenda">${esc(mostrando)}</div>
-      ${lista}`;
+      ${lista}
+      ${p.items.length ? htmlPaginacion("agenda", p) : ""}`;
   }
 
   contenido(
@@ -2669,8 +3250,16 @@ async function panelAdminAgenda() {
      </div>`
   );
 
+  const renderAgenda = (dia, texto) => {
+    const cont = $("#agenda-lista");
+    cont.innerHTML = listarEventos(dia, texto);
+    conectarPaginacion(() => renderAgenda(dia, texto), cont);
+  };
+  conectarPaginacion(() => renderAgenda(null, ""), $("#agenda-lista"));
+
   const render = () => {
-    $("#agenda-lista").innerHTML = listarEventos(null, $("#agenda-buscar").value);
+    reiniciarPaginaUI("agenda");
+    renderAgenda(null, $("#agenda-buscar").value);
   };
 
   $("#agenda-buscar").addEventListener("input", render);
@@ -2689,7 +3278,8 @@ async function panelAdminAgenda() {
       document.querySelectorAll(".cal-celda").forEach((x) => x.classList.remove("seleccionado"));
       c.classList.add("seleccionado");
       $("#agenda-buscar").value = "";
-      $("#agenda-lista").innerHTML = listarEventos(c.dataset.dia, "");
+      reiniciarPaginaUI("agenda");
+      renderAgenda(c.dataset.dia, "");
     };
   });
 }
@@ -2700,6 +3290,8 @@ async function panelAdminReportes() {
     API.beneficiarios().catch(() => ({ total: 0, semestres: [], porEstablecimiento: [] })),
     API.historico().catch(() => ({})),
   ]);
+  const pBen = paginarUI(ben.porEstablecimiento || [], "repBen");
+  const pPart = paginarUI(part, "repPart");
   contenido(
     `<h2 class="pagina">Reportes y Estadisticas</h2>
      <div class="tarjeta"><h3>Total de Estudiantes Participantes</h3>
@@ -2708,16 +3300,19 @@ async function panelAdminReportes() {
        <div class="stat"><div class="num">${(ben.porEstablecimiento || []).length}</div><div class="lbl">Establecimientos participantes</div></div>
        <h4 style="margin:14px 0 8px">Estudiantes por establecimiento</h4>
        <table><thead><tr><th>Codigo</th><th>Establecimiento</th><th>Estudiantes</th></tr></thead>
-       <tbody>${(ben.porEstablecimiento || []).map((e) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.nombre)}</td><td>${e.total}</td></tr>`).join("")}</tbody></table>
+       <tbody>${pBen.items.map((e) => `<tr><td>${esc(e.codigo)}</td><td>${esc(e.nombre)}</td><td>${e.total}</td></tr>`).join("")}</tbody></table>
+       ${htmlPaginacion("repBen", pBen)}
      </div>
      <div class="tarjeta"><h3>Participaciones por Establecimiento</h3>
        <table><thead><tr><th>Codigo</th><th>Establecimiento</th><th>Total</th><th>Aceptadas</th></tr></thead>
-       <tbody>${part.map((p) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.nombre)}</td><td>${p.total}</td><td>${p.aceptadas}</td></tr>`).join("")}</tbody></table>
+       <tbody>${pPart.items.map((p) => `<tr><td>${esc(p.codigo)}</td><td>${esc(p.nombre)}</td><td>${p.total}</td><td>${p.aceptadas}</td></tr>`).join("")}</tbody></table>
+       ${htmlPaginacion("repPart", pPart)}
      </div>
      <div class="tarjeta"><h3>Trazabilidad Historica</h3>
        <p class="muted">${esc(JSON.stringify(hist.porAnio || []))}</p>
      </div>`
   );
+  conectarPaginacion(panelAdminReportes);
 }
 
 // ============================================================
@@ -2755,6 +3350,7 @@ async function panelCoordResumen() {
   const btnHistorial = document.getElementById("btn-ver-historial-notifs");
   if (btnHistorial) btnHistorial.onclick = () => navegar("notificaciones");
   notifsEnlazar(() => panelCoordResumen());
+  conectarPaginacion(panelCoordResumen);
   await enlazarInscribirNuevo(() => panelCoordResumen());
 }
 
@@ -2763,12 +3359,13 @@ async function panelCoordResumen() {
 // de la fila de acciones; el formulario es un bloque aparte (la fila es
 // flex-row y no debe contener el formulario).
 function bloqueInscribirNuevoHtml() {
-  return `<button class="btn" id="btn-ins-nuevo">+ Inscribir Estudiante</button>`;
+  return `<button class="btn" id="btn-ins-nuevo">+ Agregar a Mi Nomina</button>`;
 }
 
 function formInscribirNuevoHtml() {
   return `<div id="form-ins-nuevo" class="tarjeta oculta" style="margin-top:10px">
-      <h4>Inscribir estudiante nuevo a una actividad</h4>
+      <h4>Solicitar inscripcion de estudiante nuevo a una actividad</h4>
+      <p class="muted">La solicitud queda pendiente hasta que el Admin DAEM la apruebe.</p>
       <div class="grid-2">
         <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("insn-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="insn-act"><input type="hidden" id="insn-div"></div>
         <div class="campo"><label>RUT</label><input id="insn-rut" autocomplete="off"></div>
@@ -2781,7 +3378,7 @@ function formInscribirNuevoHtml() {
         <div class="campo"><label>Email</label><input id="insn-email" autocomplete="off"></div>
         <div class="campo"><label>Telefono</label><input id="insn-tel" autocomplete="off"></div>
       </div>
-      <button class="btn btn-ok" id="btn-guardar-insn">Inscribir</button>
+      <button class="btn btn-ok" id="btn-guardar-insn">Enviar solicitud</button>
     </div>`;
 }
 
@@ -2814,25 +3411,29 @@ async function enlazarInscribirNuevo(alRefrescar) {
     const nom = $("#insn-nom").value.trim();
     const ape = $("#insn-ape").value.trim();
     const fecV = $("#insn-fec").value;
-    if (!division) { mostrarMensaje("Seleccione la actividad y categoria"); return; }
-    if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento"); return; }
+    const genero = $("#insn-gen").value;
+    if (!division) { mostrarMensaje("Seleccione la actividad y categoría.", "error"); return; }
+    if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento.", "error"); return; }
+    // Validación de requisitos en el cliente antes de enviar la solicitud
+    const errorReq = validarRequisitosAlumnoFront(fecV, genero, division, null);
+    if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
     try {
-      await API.inscribirAlumno({
+      const r = await API.solicitarEstudiante({
         actividad: $("#insn-act").value,
         division,
         alumno: {
           rut,
           nombre: `${nom} ${ape}`.trim(),
           apoderado: $("#insn-apo").value.trim(),
-          genero: $("#insn-gen").value,
+          genero,
           fechaNacimiento: fecV,
           email: $("#insn-email").value.trim(),
           telefono: $("#insn-tel").value.trim(),
         },
       });
-      mostrarMensaje("Estudiante inscrito en la actividad");
+      mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
       alRefrescar();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
 }
 
@@ -2859,25 +3460,27 @@ async function cargarCarteleraEn(sel) {
   div.innerHTML = `<div class="grid-2 cartelera-f">
       <div class="campo"><label>Buscar actividad</label><input id="cart-buscar" placeholder="Por nombre o area..." autocomplete="off"></div>
       <div class="campo"><label>Area</label><select id="cart-area"><option value="">Todas las areas</option>${(CAT.areas || []).map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join("")}</select></div>
-    </div><div id="cart-items">${
-      lista.length
-        ? lista.map((a) => `<div class="tarjeta" data-busq="${esc((a.nombre + " " + a.area).toLowerCase())}" data-area="${esc(a.area)}"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3></div>`).join("")
-        : "<p class='muted'>No hay actividades publicadas.</p>"
-    }</div>`;
+    </div><div id="cart-items"></div>`;
   const cartBuscar = $("#cart-buscar");
   const cartArea = $("#cart-area");
   const itemsCart = $("#cart-items");
-  const filtrarCart = () => {
-    const q = (cartBuscar.value || "").toLowerCase();
-    const ar = cartArea.value;
-    itemsCart.querySelectorAll(".tarjeta").forEach((t) => {
-      const okB = !q || (t.dataset.busq || "").includes(q);
-      const okA = !ar || (t.dataset && t.dataset.area) === ar;
-      t.classList.toggle("oculta", !(okB && okA));
-    });
+  const estadoCart = { q: "", area: "" };
+  const renderCart = () => {
+    const q = estadoCart.q.trim().toLowerCase();
+    const ar = estadoCart.area;
+    const filtradas = lista.filter((a) =>
+      (!q || (a.nombre + " " + a.area).toLowerCase().includes(q)) &&
+      (!ar || a.area === ar)
+    );
+    const p = paginarUI(filtradas, "cartelera");
+    itemsCart.innerHTML = filtradas.length
+      ? p.items.map((a) => `<div class="tarjeta"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3></div>`).join("") + htmlPaginacion("cartelera", p)
+      : "<p class='muted'>No hay actividades publicadas.</p>";
+    conectarPaginacion(renderCart, itemsCart);
   };
-  if (cartBuscar) cartBuscar.oninput = filtrarCart;
-  if (cartArea) cartArea.onchange = filtrarCart;
+  if (cartBuscar) cartBuscar.oninput = () => { estadoCart.q = cartBuscar.value || ""; reiniciarPaginaUI("cartelera"); renderCart(); };
+  if (cartArea) cartArea.onchange = () => { estadoCart.area = cartArea.value; reiniciarPaginaUI("cartelera"); renderCart(); };
+  renderCart();
   div.classList.remove("oculta");
 }
 
@@ -2886,7 +3489,8 @@ async function cargarCarteleraEn(sel) {
 function bloqueTorneosInscripcionHtml(tor) {
   const abiertos = (tor || []).filter((t) => !["suspendido", "cancelado", "finalizado"].includes(t.estado));
   if (!abiertos.length) return "";
-  return `<h3 class="pagina">Torneos con inscripcion</h3>` + abiertos.map((t) => {
+  const p = paginarUI(abiertos, "coordTorResumen");
+  return `<h3 class="pagina">Torneos con inscripcion</h3>` + p.items.map((t) => {
     const req = t.requisitos || {};
     const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
     const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
@@ -2897,11 +3501,12 @@ function bloqueTorneosInscripcionHtml(tor) {
     <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
     <p class="muted">Apertura: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} | Cierre: ${fin ? fin.toLocaleDateString("es-CL") : "-"}</p>
     <p class="muted">Requisitos: ${esc(reqTxt)}</p></div>`;
-  }).join("");
+  }).join("") + htmlPaginacion("coordTorResumen", p);
 }
 
 async function panelCoordLectores() {
   const usuarios = await API.usuarios();
+  const p = paginarUI(usuarios, "lectores");
   contenido(
     `<div class="encabezado"><h2 class="pagina">Lectores del Establecimiento</h2><button class="btn btn-primario2" id="btn-nuevo-enc">+ Nuevo Lector</button></div>
      <div id="form-nuevo-enc" class="tarjeta oculta">
@@ -2914,9 +3519,11 @@ async function panelCoordLectores() {
        <button class="btn btn-ok" id="btn-guardar-enc">Guardar</button>
      </div>
      <div class="tarjeta"><table><thead><tr><th>RUT</th><th>Nombre</th><th>Establecimiento</th><th>Correo</th><th>Acciones</th></tr></thead>
-     <tbody>${usuarios.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td><td>${esc(u.email || "-")}</td>
-     <td><button class="btn btn-err2 btn-mini" data-elim-enc="${esc(u._id)}">Eliminar</button></td></tr>`).join("")}</tbody></table></div>`
+     <tbody>${p.items.map((u) => `<tr><td>${esc(u.rut)}</td><td>${esc(u.nombre)}</td><td>${esc(u.establecimiento ? u.establecimiento.nombre : "-")}</td><td>${esc(u.email || "-")}</td>
+     <td><button class="btn btn-err2 btn-mini" data-elim-enc="${esc(u._id)}">Eliminar</button></td></tr>`).join("")}</tbody></table>
+     ${htmlPaginacion("lectores", p)}</div>`
   );
+  conectarPaginacion(panelCoordLectores);
   $("#btn-nuevo-enc").onclick = () => $("#form-nuevo-enc").classList.toggle("oculta");
   $("#btn-guardar-enc").onclick = async () => {
     try {
@@ -2925,7 +3532,7 @@ async function panelCoordLectores() {
         clave: $("#enc-clave").value, email: $("#enc-correo").value, establecimiento: API.usuario.establecimiento._id,
       });
       panelCoordLectores();
-    } catch (err) { mostrarMensaje(err.message); }
+    } catch (err) { mostrarMensaje(err.message, "error"); }
   };
   document.querySelectorAll("[data-elim-enc]").forEach((b) => {
     b.onclick = async () => {
@@ -2936,7 +3543,7 @@ async function panelCoordLectores() {
       try {
         await API.eliminarUsuario(b.dataset.elimEnc);
         panelCoordLectores();
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 }
@@ -2948,16 +3555,22 @@ async function panelCoordLectores() {
 // Se usa en Postulaciones y en el dashboard del coordinador.
 // ============================================================
 function bloqueMisInscripcionesHtml(ins) {
+  const p = paginarUI(ins, "misIns");
   return `<div class="postula-ins tarjeta">
-          <h3>Mis Inscripciones</h3>
+          <div class="cabeza-panel" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px">
+            <h3 style="margin:0">Mi Nomina</h3>
+            ${bloqueInscribirNuevoHtml()}
+          </div>
+          ${formInscribirNuevoHtml()}
           <table><thead><tr><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
-          <tbody>${ins.length
-            ? ins.map((i) => `<tr>
+          <tbody>${p.items.length
+            ? p.items.map((i) => `<tr>
             <td>${esc(i.actividad ? i.actividad.nombre : "-")}</td><td>${esc(i.division)}</td>
             <td><span class="estado est-${esc(i.estado)}">${esc(i.estado)}</span></td>
             <td>${i.estado === "en_proceso" ? '<button class="btn btn-err2 btn-mini" data-retract="' + i._id + '">Retractar</button>' : "-"}</td>
           </tr>`).join("")
             : `<tr><td colspan="4" class="muted">Todavia no tienes inscripciones.</td></tr>`}</tbody></table>
+          ${htmlPaginacion("misIns", p)}
           <div id="participacion-c" style="margin-top:12px"></div>
         </div>`;
 }
@@ -2966,9 +3579,10 @@ function enlazarMisInscripciones(ins, alRefrescar) {
   document.querySelectorAll("[data-retract]").forEach((b) => {
     b.onclick = async () => {
       try { await API.peticion("DELETE", `/api/inscripciones/${b.dataset.retract}`); alRefrescar(); }
-      catch (err) { mostrarMensaje(err.message); }
+      catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
+  conectarPaginacion(alRefrescar);
   cargarParticipacion("#participacion-c", alRefrescar);
 }
 
@@ -2980,14 +3594,16 @@ async function cargarParticipacion(selector, alRefrescar) {
   try {
     const res = await API.participaciones();
     const datos = res.datos || [];
-    if (!datos.some((d) => d.torneo)) {
+    const conTorneo = datos.filter((d) => d.torneo);
+    if (!conTorneo.length) {
       cont.innerHTML = `<p class="muted">No hay inscripciones con un torneo programado de esa actividad y categoria.</p>`;
       return;
     }
-    cont.innerHTML = datos
-      .filter((d) => d.torneo)
+    const p = paginarUI(conTorneo, "participacion");
+    cont.innerHTML = p.items
       .map((d) => tarjetaParticipacionHtml(d))
-      .join("");
+      .join("") + htmlPaginacion("participacion", p);
+    conectarPaginacion(() => cargarParticipacion(selector, alRefrescar), cont);
     cont.querySelectorAll("[data-participa]").forEach((cb) => {
       cb.onchange = async () => {
         const insId = cb.dataset.participa;
@@ -3007,7 +3623,7 @@ async function cargarParticipacion(selector, alRefrescar) {
           mostrarMensaje(participa ? "Estudiante marcado para participar" : "Estudiante retirado del torneo");
         } catch (err) {
           cb.checked = !participa;
-          mostrarMensaje(err.message);
+          mostrarMensaje(err.message, "error");
         } finally {
           cb.disabled = false;
         }
@@ -3055,9 +3671,7 @@ async function panelCoordInscribir() {
        <div class="postula-cartelera">
          <div class="cabeza-panel">
            <h3>Cartelera de Actividades</h3>
-           ${bloqueInscribirNuevoHtml()}
          </div>
-         ${formInscribirNuevoHtml()}
          <div id="cartelera-c"></div>
        </div>
        ${bloqueMisInscripcionesHtml(ins)}
@@ -3081,6 +3695,7 @@ async function panelCoordTorneos() {
     API.nomina().catch(() => ({ alumnos: [] })),
   ]);
   const alumnos = nomina.alumnos || [];
+  const pTorneos = paginarUI(torneos, "coordTorneos");
 
   const tarjetaTorneo = (t) => {
     const actId = t.actividad ? String(t.actividad._id || t.actividad) : "";
@@ -3124,7 +3739,7 @@ async function panelCoordTorneos() {
               <div class="campo"><label for="n-fec-${t._id}">Fecha de nacimiento</label><input type="date" id="n-fec-${t._id}" data-n-fec="${t._id}"></div>
               <div class="campo"><label for="n-edad-${t._id}">Edad (auto)</label><input id="n-edad-${t._id}" data-n-edad="${t._id}" placeholder="Se calcula sola" readonly></div>
             </div>
-            <button class="btn btn-ok btn-mini" data-post-nuevo="${t._id}">Agregar y postular</button>
+            <button class="btn btn-ok btn-mini" data-post-nuevo="${t._id}">Solicitar postulacion</button>
           </div>
       </div>
       <p class="muted" style="margin-top:8px">Postulados:</p>
@@ -3137,8 +3752,8 @@ async function panelCoordTorneos() {
 
   contenido(
     `<h2 class="pagina">Postular a Torneos</h2>
-     <p class="muted">Torneos programados por el Admin DAEM. Postule estudiantes de la nomina de la actividad correspondiente o registre uno nuevo (se agrega a la nomina y se inscribe al torneo).</p>
-     ${torneos.length ? torneos.map(tarjetaTorneo).join("") : `<div class="tarjeta"><p class="muted">No hay torneos en periodo de inscripciones.</p></div>`}`
+     <p class="muted">Torneos programados por el Admin DAEM. Postule estudiantes de la nomina de la actividad correspondiente o solicite el registro de uno nuevo (el Admin DAEM debe aprobarlo antes de agregarlo a la nomina y al torneo).</p>
+     ${torneos.length ? pTorneos.items.map(tarjetaTorneo).join("") + htmlPaginacion("coordTorneos", pTorneos) : `<div class="tarjeta"><p class="muted">No hay torneos en periodo de inscripciones.</p></div>`}`
   );
 
   // Edad automatica al elegir la fecha de nacimiento del estudiante nuevo.
@@ -3177,7 +3792,7 @@ async function panelCoordTorneos() {
       try {
         const r = await API.postularTorneo(id, { alumnoId });
         mostrarMensaje(r.mensaje); refrescar();
-      } catch (err) { mostrarMensaje(err.message); }
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
 
@@ -3185,57 +3800,163 @@ async function panelCoordTorneos() {
     b.onclick = async () => {
       const id = b.dataset.postNuevo;
       const n = obtenerNuevo(id);
-      if (!n.rut || !n.nombre || !n.fechaNacimiento) { mostrarMensaje("Complete RUT, Nombres y Fecha de nacimiento"); return; }
+      if (!n.rut || !n.nombre || !n.fechaNacimiento) { mostrarMensaje("Complete RUT, Nombres y Fecha de nacimiento.", "error"); return; }
+      // Buscar el torneo correspondiente para obtener sus requisitos
+      const torneo = torneos.find((t) => String(t._id) === String(id));
+      const reqTorneo = torneo ? (torneo.requisitos || null) : null;
+      const division = torneo ? (torneo.division || "") : "";
+      // Validación de requisitos en el cliente antes de enviar la solicitud
+      const errorReq = validarRequisitosAlumnoFront(n.fechaNacimiento, n.genero, division, reqTorneo);
+      if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
       try {
-        const r = await API.postularTorneo(id, { alumno: { rut: n.rut, nombre: `${n.nombre} ${n.apellidos}`.trim(), genero: n.genero, fechaNacimiento: n.fechaNacimiento } });
-        mostrarMensaje(r.mensaje); refrescar();
-      } catch (err) { mostrarMensaje(err.message); }
+        const r = await API.solicitarEstudiante({
+          torneo: id,
+          alumno: { rut: n.rut, nombre: `${n.nombre} ${n.apellidos}`.trim(), genero: n.genero, fechaNacimiento: n.fechaNacimiento },
+        });
+        mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok"); refrescar();
+      } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
+  conectarPaginacion(panelCoordTorneos);
 }
 
 async function panelCoordSolicitudesImpl() {
-  const solicitudes = await API.solicitudes();
-  const encAlumnos = await API.inscripciones();
+  const [solicitudes, encAlumnos, torneosDisp] = await Promise.all([
+    API.solicitudes(),
+    API.inscripciones(),
+    API.torneosPostulables().catch(() => []),
+  ]);
   const opAlIns = encAlumnos.filter((i) => i.estado === "aceptada")
     .map((i) => ({ valor: String(i._id), texto: `${i.actividad ? i.actividad.nombre : ""} - ${i.division}` }));
+  const pendientes = solicitudes.filter((s) => s.estado === "en_proceso");
+  const historial = solicitudes.filter((s) => s.estado !== "en_proceso");
+  const tab = SOLICITUDES_UI.tabCoord;
+  const items = tab === "pend" ? pendientes : historial;
+  const prefijo = tab === "pend" ? "solCoordPend" : "solCoordHist";
+
+  // Opciones de torneos para el selector
+  const opcionesTorneos = torneosDisp.length
+    ? torneosDisp.map((t) => `<option value="${t._id}">${esc(t.nombre)} — ${esc(t.division || "Sin categoria")}</option>`).join("")
+    : `<option value="">Sin torneos disponibles para postular</option>`;
+
   contenido(
     `<h2 class="pagina">Solicitudes y Estado</h2>
-     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">Agregar Estudiante a Inscripcion</button></div>
+     <p class="muted">Solicite la inscripcion de un estudiante. El Admin DAEM debe aprobarla antes de que se agregue a la nomina.</p>
+     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">+ Añadir Inscripción</button></div>
      <div id="agregar-alumno-box" class="oculta tarjeta">
-       <div class="grid-2">
-         <div class="campo"><label>Inscripcion (aceptada)</label>${comboHtml("al-ins-txt", "Buscar inscripcion...")}<input type="hidden" id="al-ins"></div>
-         <div class="campo"><label>RUT alumno</label><input id="al-rut"></div>
-         <div class="campo"><label>Nombre</label><input id="al-nombre"></div>
-         <div class="campo"><label>Genero</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
-         <div class="campo"><label>Fecha nacimiento (validada por categoria)</label><input type="date" id="al-fecha"></div>
+       <div class="seccion" style="margin-bottom:12px">
+         <strong>Vincular solicitud a:</strong>&nbsp;&nbsp;
+         <label style="margin-right:16px"><input type="radio" name="al-destino" value="inscripcion" checked> Inscripción aceptada</label>
+         <label><input type="radio" name="al-destino" value="torneo"> Torneo disponible</label>
        </div>
-       <button class="btn btn-ok" id="btn-guardar-al">Agregar</button>
+       <div id="al-bloque-inscripcion">
+         <div class="campo"><label>Inscripción (aceptada)</label>${comboHtml("al-ins-txt", "Buscar inscripcion...")}<input type="hidden" id="al-ins"></div>
+       </div>
+       <div id="al-bloque-torneo" class="oculta">
+         <div class="campo">
+           <label>Torneo disponible</label>
+           <select id="al-torneo"><option value="">-- Seleccione un torneo --</option>${opcionesTorneos}</select>
+         </div>
+         <div id="al-torneo-info" class="muted" style="font-size:0.85em;margin-bottom:8px"></div>
+       </div>
+       <div class="grid-2" style="margin-top:10px">
+         <div class="campo"><label>RUT alumno</label><input id="al-rut"></div>
+         <div class="campo"><label>Nombre completo</label><input id="al-nombre"></div>
+         <div class="campo"><label>Género</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
+         <div class="campo"><label>Fecha nacimiento</label><input type="date" id="al-fecha"></div>
+       </div>
+       <button class="btn btn-ok" id="btn-guardar-al">Enviar solicitud</button>
      </div>
-     <div class="tarjeta"><h3>Estado de Solicitudes</h3>
-       <table><thead><tr><th>Tipo</th><th>Detalle</th><th>Estado</th></tr></thead>
-       <tbody>${solicitudes.map((s) => `<tr><td>${esc(s.tipo)}</td><td>${esc(s.detalle)}</td><td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td></tr>`).join("")}</tbody></table>
-     </div>`
+     ${tabsSolicitudesHtml(tab, pendientes, historial, "coord")}
+     <h3 class="pagina">${tab === "pend" ? "Pendientes" : "Historial"} (${items.length})</h3>
+     ${tablaSolicitudesHtml(items, prefijo, false)}`
   );
+
+  conectarTabsSolicitudes("coord", panelCoordSolicitudes);
+  conectarPaginacion(panelCoordSolicitudes);
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
   initCombo("al-ins-txt", opAlIns, (o) => { $("#al-ins").value = o.valor; }, "Buscar inscripcion...");
+
+  // Mostrar/ocultar bloques según radio seleccionado
+  document.querySelectorAll("[name='al-destino']").forEach((r) => {
+    r.addEventListener("change", () => {
+      const esTorneo = document.querySelector("[name='al-destino']:checked")?.value === "torneo";
+      $("#al-bloque-inscripcion").classList.toggle("oculta", esTorneo);
+      $("#al-bloque-torneo").classList.toggle("oculta", !esTorneo);
+    });
+  });
+
+  // Mostrar requisitos del torneo seleccionado en tiempo real
+  const selTor = $("#al-torneo");
+  const infoTor = $("#al-torneo-info");
+  if (selTor) {
+    selTor.addEventListener("change", () => {
+      const tId = selTor.value;
+      const t = torneosDisp.find((x) => String(x._id) === String(tId));
+      if (!t || !infoTor) return;
+      const req = t.requisitos || {};
+      const partes = [];
+      if (req.activo) {
+        if (req.edadMinima != null) partes.push(`Edad mínima: ${req.edadMinima} años`);
+        if (req.edadMaxima != null) partes.push(`Edad máxima: ${req.edadMaxima} años`);
+        if (req.genero) partes.push(`Solo ${req.genero}`);
+      }
+      const ap = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion).toLocaleDateString("es-CL") : null;
+      const ci = t.fechaCierreInscripcion   ? new Date(t.fechaCierreInscripcion).toLocaleDateString("es-CL")   : null;
+      if (ap) partes.push(`Apertura: ${ap}`);
+      if (ci) partes.push(`Cierre: ${ci}`);
+      infoTor.textContent = partes.length ? partes.join("  |  ") : "Sin requisitos especiales.";
+    });
+  }
+
+  // Envío del formulario
   $("#btn-guardar-al").onclick = async () => {
-    try {
-      await API.agregarAlumno($("#al-ins").value, {
-        rut: $("#al-rut").value, nombre: $("#al-nombre").value, fechaNacimiento: $("#al-fecha").value, genero: $("#al-genero").value,
-      });
-      mostrarMensaje("Estudiante agregado (la categoria valida el anio de nacimiento)"); panelCoordSolicitudes();
-    } catch (err) { mostrarMensaje(err.message); }
+    const destino = document.querySelector("[name='al-destino']:checked")?.value || "inscripcion";
+    const rut    = $("#al-rut").value.trim();
+    const nombre = $("#al-nombre").value.trim();
+    const genero = $("#al-genero").value;
+    const fecha  = $("#al-fecha").value;
+    if (!rut || !nombre) { mostrarMensaje("Complete al menos RUT y Nombre del alumno.", "error"); return; }
+
+    if (destino === "torneo") {
+      const tId = selTor ? selTor.value : "";
+      if (!tId) { mostrarMensaje("Seleccione un torneo disponible.", "error"); return; }
+      if (!fecha) { mostrarMensaje("Ingrese la fecha de nacimiento del alumno.", "error"); return; }
+      // Validacion de requisitos en el cliente antes de enviar
+      const t = torneosDisp.find((x) => String(x._id) === String(tId));
+      const errorReq = validarRequisitosAlumnoFront(fecha, genero, t ? (t.division || "") : "", t ? (t.requisitos || null) : null);
+      if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
+      try {
+        const r = await API.solicitarEstudiante({
+          torneo: tId,
+          alumno: { rut, nombre, genero, fechaNacimiento: fecha },
+        });
+        mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
+        panelCoordSolicitudes();
+      } catch (err) { mostrarMensaje(err.message, "error"); }
+    } else {
+      if (!$("#al-ins").value) { mostrarMensaje("Seleccione una inscripción aceptada.", "error"); return; }
+      try {
+        const r = await API.solicitarEstudiante({
+          inscripcion: $("#al-ins").value,
+          alumno: { rut, nombre, genero, fechaNacimiento: fecha },
+        });
+        mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
+        panelCoordSolicitudes();
+      } catch (err) { mostrarMensaje(err.message, "error"); }
+    }
   };
 }
 
 // Tabla de la nomina (reutilizada por el listado siempre visible del panel).
 function tablaAlumnosNomina(alumnos) {
+  const p = paginarUI(alumnos, "nomina");
   return `<div class="tarjeta"><h3>Nomina de Estudiantes <span class="muted">(${alumnos.length})</span></h3>
     <table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Categoria</th></tr></thead>
-    <tbody>${alumnos.length
-      ? alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")
+    <tbody>${p.items.length
+      ? p.items.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")
       : '<tr><td colspan="5" class="muted">Sin estudiantes para los filtros seleccionados.</td></tr>'}</tbody></table>
+    ${htmlPaginacion("nomina", p)}
   </div>`;
 }
 
@@ -3284,21 +4005,23 @@ async function panelCoordNomina() {
       return true;
     });
     $("#alumnos-lista").innerHTML = tablaAlumnosNomina(lista);
+    conectarPaginacion(render, $("#alumnos-lista"));
   };
+  const aplicarFiltro = () => { reiniciarPaginaUI("nomina"); render(); };
 
   $("#btn-filtrar").onclick = () => $("#nomina-filtros").classList.toggle("oculta");
-  $("#flt-nombre").addEventListener("input", (e) => { filtro.nombre = e.target.value; render(); });
-  initCombo("flt-act-txt", actividades.map((n) => ({ valor: n, texto: n })), (o) => { filtro.actividad = o.texto; render(); }, "Buscar actividad...");
-  initCombo("flt-cat-txt", categorias.map((d) => ({ valor: d, texto: d })), (o) => { filtro.categoria = o.texto; render(); }, "Buscar categoria...");
-  initCombo("flt-sub-txt", subcategorias, (o) => { filtro.subcategoria = o.texto; render(); }, "Damas / Varones...");
-  $("#flt-act-txt").addEventListener("input", (e) => { filtro.actividad = e.target.value; render(); });
-  $("#flt-cat-txt").addEventListener("input", (e) => { filtro.categoria = e.target.value; render(); });
-  $("#flt-sub-txt").addEventListener("input", (e) => { filtro.subcategoria = e.target.value; render(); });
+  $("#flt-nombre").addEventListener("input", (e) => { filtro.nombre = e.target.value; aplicarFiltro(); });
+  initCombo("flt-act-txt", actividades.map((n) => ({ valor: n, texto: n })), (o) => { filtro.actividad = o.texto; aplicarFiltro(); }, "Buscar actividad...");
+  initCombo("flt-cat-txt", categorias.map((d) => ({ valor: d, texto: d })), (o) => { filtro.categoria = o.texto; aplicarFiltro(); }, "Buscar categoria...");
+  initCombo("flt-sub-txt", subcategorias, (o) => { filtro.subcategoria = o.texto; aplicarFiltro(); }, "Damas / Varones...");
+  $("#flt-act-txt").addEventListener("input", (e) => { filtro.actividad = e.target.value; aplicarFiltro(); });
+  $("#flt-cat-txt").addEventListener("input", (e) => { filtro.categoria = e.target.value; aplicarFiltro(); });
+  $("#flt-sub-txt").addEventListener("input", (e) => { filtro.subcategoria = e.target.value; aplicarFiltro(); });
   $("#btn-limpiar-filtros").onclick = () => {
     filtro.nombre = filtro.actividad = filtro.categoria = filtro.subcategoria = "";
     $("#flt-nombre").value = "";
     $("#flt-act-txt").value = $("#flt-cat-txt").value = $("#flt-sub-txt").value = "";
-    render();
+    aplicarFiltro();
   };
   render();
 }
@@ -3330,12 +4053,14 @@ async function panelLectorResumen() {
       : `<span class="estado">${esc(est)}</span>`;
 
   const torneosVigentes = tor.filter((t) => ["activo", "en_curso", "inscripciones"].includes(t.estado));
+  const pTor = paginarUI(torneosVigentes, "lectorTor");
+  const pAct = paginarUI(act, "lectorAct");
 
   contenido(
     `<div class="encabezado"><h2 class="pagina">Vista de Solo Lectura</h2><p class="muted">Perfil Lector - no puede modificar datos.${establecimiento ? ` | Establecimiento: ${esc(establecimiento)}` : ""}</p></div>
      <div class="tarjeta"><h3>Torneos Vigentes</h3>
-       ${torneosVigentes.length
-         ? torneosVigentes.map((t) => `<div class="cambio-torneo tor-fila">
+       ${pTor.items.length
+         ? pTor.items.map((t) => `<div class="cambio-torneo tor-fila">
               <div class="tor-fila-info">
                 <div>${formatearEstado(t.estado)} <strong>${esc(t.nombre)}</strong></div>
                 <div class="muted">${esc(t.actividad ? t.actividad.nombre : "")} | ${esc(new Date((t.updatedAt || t.createdAt)).toLocaleDateString("es-CL"))}</div>
@@ -3343,20 +4068,23 @@ async function panelLectorResumen() {
               <button class="btn btn-mini" data-llaves="${t._id}" data-nombre="${esc(t.nombre)}">Ver Mapa</button>
             </div>`).join("")
          : "<p class='muted'>No hay torneos vigentes.</p>"}
+       ${htmlPaginacion("lectorTor", pTor)}
      </div>
      <div class="tarjeta"><h3>Cartelera de Actividades</h3>
-       ${act.length
-         ? act.map((a) => {
+       ${pAct.items.length
+         ? pAct.items.map((a) => {
              const inicio = a.fechaAperturaInscripcion ? new Date(a.fechaAperturaInscripcion) : null;
              const fin = a.fechaCierreInscripcion ? new Date(a.fechaCierreInscripcion) : null;
              return `<div class="cambio-torneo"><strong>${esc(a.nombre)}</strong> <span class="badge-rol">${esc(a.area)}</span> <span class="muted">| Categorias: ${esc(a.divisiones.join(", "))} | Estado: ${esc(a.estado)}</span>
              ${(inicio || fin) ? `<span class="muted">| Inscripcion: ${inicio ? inicio.toLocaleDateString("es-CL") : "-"} a ${fin ? fin.toLocaleDateString("es-CL") : "-"}</span>` : ""}</div>`;
            }).join("")
          : "<p class='muted'>No hay actividades publicadas.</p>"}
+       ${htmlPaginacion("lectorAct", pAct)}
      </div>`
   );
+  conectarPaginacion(panelLectorResumen);
   document.querySelectorAll("[data-llaves]").forEach((b) => {
-    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message));
+    b.onclick = () => abrirMapaTorneo(b.dataset.llaves, b.dataset.nombre).catch((err) => mostrarMensaje(err.message, "error"));
   });
 }
 
@@ -3365,23 +4093,28 @@ async function panelLectorEstudiantes() {
   const u = API.usuario || {};
   const establecimiento = u.establecimiento && u.establecimiento.nombre ? u.establecimiento.nombre : "";
   const nomina = await API.nomina();
+  const pPorAct = paginarUI(nomina.porActividad, "lectorPorAct");
+  const pAlumnos = paginarUI(nomina.alumnos, "lectorAlumnos");
   contenido(
     `<div class="encabezado"><h2 class="pagina">Estudiantes del Establecimiento</h2>
        <p class="muted">${establecimiento ? esc(establecimiento) : "Sin establecimiento asignado"} - solo lectura</p></div>
      <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Estudiantes inscritos</div></div>
      <div class="tarjeta"><h3>Por Actividad</h3>
-       ${nomina.porActividad.length
+       ${pPorAct.items.length
          ? `<table><thead><tr><th>Actividad</th><th>Cantidad</th></tr></thead>
-            <tbody>${nomina.porActividad.map((p) => `<tr><td>${esc(p.actividad)}</td><td>${p.cantidad}</td></tr>`).join("")}</tbody></table>`
+            <tbody>${pPorAct.items.map((p) => `<tr><td>${esc(p.actividad)}</td><td>${p.cantidad}</td></tr>`).join("")}</tbody></table>`
          : "<p class='muted'>Sin estudiantes registrados.</p>"}
+       ${htmlPaginacion("lectorPorAct", pPorAct)}
      </div>
      <div class="tarjeta"><h3>Listado de Estudiantes</h3>
-       ${nomina.alumnos.length
+       ${pAlumnos.items.length
          ? `<table><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Actividad</th><th>Division</th></tr></thead>
-            <tbody>${nomina.alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>`
+            <tbody>${pAlumnos.items.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero === "M" ? "Masc" : a.genero === "F" ? "Fem" : "Otro")}</td><td>${esc(a.actividad ? a.actividad.nombre : "")}</td><td>${esc(a.division)}</td></tr>`).join("")}</tbody></table>`
          : "<p class='muted'>Sin estudiantes registrados.</p>"}
+       ${htmlPaginacion("lectorAlumnos", pAlumnos)}
      </div>`
   );
+  conectarPaginacion(panelLectorEstudiantes);
 }
 
 // ---------- Init ----------

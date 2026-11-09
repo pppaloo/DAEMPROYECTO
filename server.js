@@ -21,6 +21,7 @@ const catalogRoutes = require("./routes/catalogRoutes");
 const notificacionRoutes = require("./routes/notificacionRoutes");
 const externoRoutes = require("./routes/externoRoutes");
 const verificarRecaptcha = require("./middlewares/recaptcha");
+const RecordatorioService = require("./services/RecordatorioService");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -83,6 +84,8 @@ app.get("*", (req, res) => {
 async function iniciarServidor() {
   await initDatabase();
   await ejecutarSeed();
+  const recordatorio = new RecordatorioService();
+  recordatorio.iniciarScheduler();
   app.listen(PORT, () => {
     console.log(`DAEM corriendo en http://localhost:${PORT}`);
     console.log(`API disponible en http://localhost:${PORT}/api`);

@@ -59,23 +59,38 @@ body {
 }
 
 /* ---------- Tostadas y modal de confirmacion ---------- */
-.tostada {
-  display: flex; align-items: center; justify-content: space-between; gap: 10px;
-  background: var(--blanco); border: 1px solid var(--borde); border-left: 4px solid var(--azul);
-  color: var(--texto); padding: 11px 14px; border-radius: 8px; font-size: 14px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.16); transition: opacity 0.2s;
+#tostadas {
+  position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+  z-index: 10000; display: flex; flex-direction: column; align-items: center; gap: 12px;
+  width: min(560px, calc(100vw - 32px)); pointer-events: none;
 }
+#tostadas .tostada { pointer-events: auto; width: 100%; }
+.tostada {
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--blanco); border: 2px solid var(--borde);
+  color: var(--texto); padding: 18px 52px; border-radius: 12px;
+  font-size: 17px; font-weight: 600; line-height: 1.4; text-align: center;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.18);
+  transition: opacity 0.2s, transform 0.2s;
+}
+.tostada > span { display: block; width: 100%; }
 .tostada button {
-  border: none; background: transparent; font-size: 18px; line-height: 1; cursor: pointer;
-  color: #98a1b3; padding: 0;
+  position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+  border: none; background: transparent; font-size: 24px; line-height: 1; cursor: pointer;
+  color: #98a1b3; padding: 4px;
 }
 .tostada button:hover { color: var(--err); }
-.tostada-ok { border-left-color: var(--ok); }
-.tostada-ok span::before { content: "\2714  "; color: var(--ok); font-weight: 700; }
-.tostada-error { border-left-color: var(--err); }
-.tostada-error span::before { content: "\26A0  "; color: var(--err); font-weight: 700; }
-.tostada-info { border-left-color: var(--azul); }
-.tostada-info span::before { content: "\2139  "; color: var(--azul); font-weight: 700; }
+.tostada-ok { border-color: var(--ok); background: #e8f5e9; color: #1b5e20; }
+.tostada-ok span::before { content: "\2714"; color: var(--ok); font-weight: 700; margin-right: 8px; }
+.tostada-error { border-color: var(--err); background: #fdecea; color: #7f1d1d; }
+.tostada-error span::before { content: "\26A0"; color: var(--err); font-weight: 700; margin-right: 8px; }
+.tostada-info { border-color: var(--azul); background: #e8f1ff; color: #0b3a75; }
+.tostada-info span::before { content: "\2139"; color: var(--azul); font-weight: 700; margin-right: 8px; }
+@media (max-width: 560px) {
+  #tostadas { top: 10px; width: calc(100vw - 20px); }
+  .tostada { font-size: 15px; padding: 14px 44px; }
+}
 
 .modal-overlay {
   position: fixed; inset: 0; background: rgba(15, 18, 30, 0.55); z-index: 10001;
@@ -309,6 +324,9 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
 .stat { display: inline-block; background: #fff; border: 1px solid var(--borde); border-radius: 10px; padding: 14px 18px; margin: 0 10px 10px 0; }
 .stat .num { font-size: 26px; font-weight: 800; color: var(--primario); }
 .stat .lbl { font-size: 12px; color: #6b7590; }
+.stat-clicable { cursor: pointer; transition: transform .15s ease, box-shadow .15s ease, border-color .15s ease; }
+.stat-clicable:hover, .stat-clicable:focus-visible { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(0,0,0,.12); border-color: var(--primario); outline: none; }
+.stat-clicable:active { transform: translateY(0); }
 
 /* ---------- Dashboard torneos en curso (admin) ---------- */
 .stats-fila { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }

@@ -273,8 +273,14 @@ async function ejecutarSeed() {
   }
 
   // 2) Establecimientos
+  // La carga demo solo se crea en una base nueva. Si el administrador vacio el
+  // directorio para poblarlo desde MINEDUC, no se vuelve a crear al reiniciar.
   const idsColegios = {};
   if (estRepo.contar() === 0) {
+    if (existenDocumentos("usuarios", { rol: "coordinador" })) {
+      console.log("[SEED] Directorio vacio administrado por el usuario: se omite la carga demo.");
+      return;
+    }
     for (const c of COLEGIOS) {
       const creado = estRepo.crear({ codigo: c.codigo, nombre: c.nombre, dependencia: c.dependencia });
       idsColegios[c.codigo] = creado.id;
@@ -282,7 +288,12 @@ async function ejecutarSeed() {
     }
   } else {
     for (const c of COLEGIOS) {
-      idsColegios[c.codigo] = estRepo.obtenerPorCodigo(c.codigo).id;
+      const doc = estRepo.obtenerPorCodigo(c.codigo);
+      if (doc) idsColegios[c.codigo] = doc.id;
+    }
+    if (!COLEGIOS.every((c) => idsColegios[c.codigo])) {
+      console.log("[SEED] Directorio con establecimientos propios: se omite la carga demo.");
+      return;
     }
   }
 

@@ -131,11 +131,13 @@ const API = {
   // ---------- Establecimientos ----------
   async establecimientos() { return this.peticion("GET", "/api/establecimientos"); },
   async crearEstablecimiento(datos) { return this.peticion("POST", "/api/establecimientos", datos); },
+  async actualizarEstablecimiento(id, datos) { return this.peticion("PUT", `/api/establecimientos/${id}`, datos); },
+  async eliminarEstablecimiento(id) { return this.peticion("DELETE", `/api/establecimientos/${id}`); },
 
   // ---------- Usuarios ----------
   async usuarios() { return this.peticion("GET", "/api/usuarios"); },
   async crearUsuario(datos) { return this.peticion("POST", "/api/usuarios", datos); },
-  async eliminarUsuario(id) { return this.peticion("DELETE", `/api/usuarios/${id}`); },
+  async actualizarUsuario(id, datos) { return this.peticion("PUT", `/api/usuarios/${id}`, datos); },
 
   // ---------- Secciones ----------
   async secciones() { return this.peticion("GET", "/api/secciones"); },
@@ -204,6 +206,9 @@ const API = {
 
   // ---------- Solicitudes ----------
   async solicitudes() { return this.peticion("GET", "/api/solicitudes"); },
+  async solicitarEstudiante(datos) {
+    return this.peticion("POST", "/api/solicitudes/estudiante", datos);
+  },
   async responderSolicitud(id, estado, respuesta) {
     return this.peticion("PUT", `/api/solicitudes/${id}/estado`, { estado, respuesta });
   },

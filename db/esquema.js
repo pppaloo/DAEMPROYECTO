@@ -266,9 +266,11 @@ const CREAR_TABLAS = [
   )`,
 
   // ---------- Solicitud ----------
+  // tipo 'inscripcion': el coordinador propone inscribir un estudiante y el
+  // Admin DAEM debe aprobar/rechazar antes de agregarlo a la nomina.
   `CREATE TABLE IF NOT EXISTS solicitudes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tipo TEXT NOT NULL CHECK (tipo IN ('recursos','participacion','otro')),
+    tipo TEXT NOT NULL CHECK (tipo IN ('recursos','participacion','otro','inscripcion')),
     detalle TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'en_proceso'
       CHECK (estado IN ('en_proceso','aprobada','rechazada')),
@@ -277,6 +279,16 @@ const CREAR_TABLAS = [
     actividad INTEGER DEFAULT NULL REFERENCES actividades (id) ON DELETE SET NULL,
     establecimiento INTEGER DEFAULT NULL REFERENCES establecimientos (id) ON DELETE SET NULL,
     respuesta TEXT NOT NULL DEFAULT '',
+    inscripcion INTEGER DEFAULT NULL REFERENCES inscripciones (id) ON DELETE SET NULL,
+    torneo INTEGER DEFAULT NULL REFERENCES torneos (id) ON DELETE SET NULL,
+    division TEXT NOT NULL DEFAULT '',
+    alumnoRut TEXT NOT NULL DEFAULT '',
+    alumnoNombre TEXT NOT NULL DEFAULT '',
+    alumnoGenero TEXT NOT NULL DEFAULT '',
+    alumnoFechaNacimiento TEXT DEFAULT NULL,
+    alumnoApoderado TEXT NOT NULL DEFAULT '',
+    alumnoEmail TEXT NOT NULL DEFAULT '',
+    alumnoTelefono TEXT NOT NULL DEFAULT '',
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
@@ -339,6 +351,57 @@ function aplicarMigraciones(bd) {
     bd.exec(`CREATE INDEX IF NOT EXISTS idx_notificaciones_destinatario ON notificaciones (destinatario)`);
     bd.exec(`PRAGMA foreign_keys = ON`);
   }
+
+  // La tabla solicitudes debe aceptar el tipo 'inscripcion' y guardar los
+  // datos del estudiante propuesto. SQLite no puede alterar un CHECK, asi que
+  // se recrea conservando las filas existentes.
+  const sqlSolicitudes = bd
+    .prepare(`SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'solicitudes'`)
+    .get();
+  if (sqlSolicitudes && sqlSolicitudes.sql && !sqlSolicitudes.sql.includes("'inscripcion'")) {
+    bd.exec(`CREATE TABLE solicitudes__nueva (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tipo TEXT NOT NULL CHECK (tipo IN ('recursos','participacion','otro','inscripcion')),
+      detalle TEXT NOT NULL,
+      estado TEXT NOT NULL DEFAULT 'en_proceso'
+        CHECK (estado IN ('en_proceso','aprobada','rechazada')),
+      rutSolicitante TEXT NOT NULL,
+      rutCoordinador TEXT NOT NULL DEFAULT '',
+      actividad INTEGER DEFAULT NULL REFERENCES actividades (id) ON DELETE SET NULL,
+      establecimiento INTEGER DEFAULT NULL REFERENCES establecimientos (id) ON DELETE SET NULL,
+      respuesta TEXT NOT NULL DEFAULT '',
+      inscripcion INTEGER DEFAULT NULL REFERENCES inscripciones (id) ON DELETE SET NULL,
+      torneo INTEGER DEFAULT NULL REFERENCES torneos (id) ON DELETE SET NULL,
+      division TEXT NOT NULL DEFAULT '',
+      alumnoRut TEXT NOT NULL DEFAULT '',
+      alumnoNombre TEXT NOT NULL DEFAULT '',
+      alumnoGenero TEXT NOT NULL DEFAULT '',
+      alumnoFechaNacimiento TEXT DEFAULT NULL,
+      alumnoApoderado TEXT NOT NULL DEFAULT '',
+      alumnoEmail TEXT NOT NULL DEFAULT '',
+      alumnoTelefono TEXT NOT NULL DEFAULT '',
+      createdAt TEXT NOT NULL DEFAULT (datetime('now')),
+      updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+    )`);
+    bd.exec(`INSERT INTO solicitudes__nueva
+      (id, tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
+       establecimiento, respuesta, createdAt, updatedAt)
+      SELECT id, tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
+       establecimiento, respuesta, createdAt, updatedAt FROM solicitudes`);
+    bd.exec(`DROP TABLE solicitudes`);
+    bd.exec(`ALTER TABLE solicitudes__nueva RENAME TO solicitudes`);
+  }
+  // Columnas del estudiante propuesto (bases creadas con una version previa).
+  agregarSiFalta("solicitudes", "inscripcion", "inscripcion INTEGER DEFAULT NULL REFERENCES inscripciones (id) ON DELETE SET NULL");
+  agregarSiFalta("solicitudes", "torneo", "torneo INTEGER DEFAULT NULL REFERENCES torneos (id) ON DELETE SET NULL");
+  agregarSiFalta("solicitudes", "division", "division TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoRut", "alumnoRut TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoNombre", "alumnoNombre TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoGenero", "alumnoGenero TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoFechaNacimiento", "alumnoFechaNacimiento TEXT DEFAULT NULL");
+  agregarSiFalta("solicitudes", "alumnoApoderado", "alumnoApoderado TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoEmail", "alumnoEmail TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "alumnoTelefono", "alumnoTelefono TEXT NOT NULL DEFAULT ''");
 
   // Las areas ya no tienen CHECK fijo: se puedan agregar dinamicamente.
   // SQLite no puede alterar un CHECK, asi que se recrean las tablas que lo

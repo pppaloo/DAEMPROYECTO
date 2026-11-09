@@ -16,7 +16,9 @@ const SQL_SOLICITUDES = `
 
 const COLUMNAS_SOLICITUD = new Set([
   "tipo", "detalle", "estado", "rutSolicitante", "rutCoordinador",
-  "actividad", "establecimiento", "respuesta",
+  "actividad", "establecimiento", "respuesta", "inscripcion", "torneo",
+  "division", "alumnoRut", "alumnoNombre", "alumnoGenero",
+  "alumnoFechaNacimiento", "alumnoApoderado", "alumnoEmail", "alumnoTelefono",
 ]);
 
 function aSolicitud(s) {
@@ -48,6 +50,18 @@ function aSolicitud(s) {
       updatedAt: s.establecimientoUpdatedAt,
     },
     respuesta: s.respuesta,
+    inscripcion: s.inscripcion == null ? null : s.inscripcion,
+    torneo: s.torneo == null ? null : s.torneo,
+    division: s.division,
+    alumno: {
+      rut: s.alumnoRut,
+      nombre: s.alumnoNombre,
+      genero: s.alumnoGenero,
+      fechaNacimiento: s.alumnoFechaNacimiento,
+      apoderado: s.alumnoApoderado,
+      email: s.alumnoEmail,
+      telefono: s.alumnoTelefono,
+    },
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
@@ -86,8 +100,10 @@ class SolicitudRepository {
       .prepare(
         `INSERT INTO solicitudes
           (tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
-           establecimiento, respuesta)
-         VALUES (?,?,?,?,?,?,?,?)`
+           establecimiento, respuesta, inscripcion, torneo, division,
+           alumnoRut, alumnoNombre, alumnoGenero, alumnoFechaNacimiento,
+           alumnoApoderado, alumnoEmail, alumnoTelefono)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         solicitud.tipo,
@@ -97,7 +113,17 @@ class SolicitudRepository {
         solicitud.rutCoordinador ?? "",
         solicitud.actividad ?? null,
         solicitud.establecimiento ?? null,
-        solicitud.respuesta ?? ""
+        solicitud.respuesta ?? "",
+        solicitud.inscripcion ?? null,
+        solicitud.torneo ?? null,
+        solicitud.division ?? "",
+        solicitud.alumno?.rut ?? "",
+        solicitud.alumno?.nombre ?? "",
+        solicitud.alumno?.genero ?? "",
+        solicitud.alumno?.fechaNacimiento ?? null,
+        solicitud.alumno?.apoderado ?? "",
+        solicitud.alumno?.email ?? "",
+        solicitud.alumno?.telefono ?? ""
       );
     return this.obtenerPorId(r.lastInsertRowid);
   }

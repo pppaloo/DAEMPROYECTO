@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>DAEM - Gestion Extraescolar</title>
-  <link rel="stylesheet" href="/css/estilos.css" />
+  <link rel="stylesheet" href="/css/estilos.css?v=47" />
 </head>
 <body>
   <div id="app"></div>
@@ -23,7 +23,7 @@
       </div>
       <form id="form-login">
         <label for="login-rut">RUT</label>
-        <input type="text" id="login-rut" placeholder="Ej: 11111111-1" required />
+        <input type="text" id="login-rut" placeholder="Ej: 22.113.000-6" required />
         <label for="login-clave">Clave</label>
         <input type="password" id="login-clave" required />
         <p id="login-error" class="error oculta"></p>
@@ -34,7 +34,7 @@
         <p class="login-subtitulo">Recuperar clave</p>
         <p class="muted">Ingrese su RUT y le enviaremos un correo con el enlace para crear una clave nueva.</p>
         <label for="recuperar-rut">RUT</label>
-        <input type="text" id="recuperar-rut" placeholder="Ej: 11111111-1" />
+        <input type="text" id="recuperar-rut" placeholder="Ej: 22.113.000-6" />
         <p id="recuperar-msg" class="error oculta"></p>
         <button type="button" id="btn-ok-recuperar" class="btn-primario">Enviar correo</button>
         <button type="button" id="btn-volver-recuperar" class="login-enlace">Volver al inicio de sesion</button>
@@ -93,6 +93,6 @@
   </template>
 
   <script src="/js/api.js"></script>
-  <script src="/js/app.js?v=39"></script>
+  <script src="/js/app.js?v=49"></script>
 </body>
 </html>

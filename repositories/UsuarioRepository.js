@@ -30,9 +30,13 @@ class UsuarioRepository {
 
   obtenerPorRut(rut) {
     const bd = obtenerConexion();
+    let clave = String(rut || "").trim().toUpperCase().replace(/\./g, "");
+    if (clave && !clave.includes("-") && clave.length >= 2) {
+      clave = clave.slice(0, -1) + "-" + clave.slice(-1);
+    }
     const fila = bd
       .prepare(`SELECT * FROM usuarios WHERE rut = ?`)
-      .get(String(rut || "").toUpperCase());
+      .get(clave || String(rut || "").toUpperCase());
     return fila ? aplanar("usuarios", fila) : null;
   }
 

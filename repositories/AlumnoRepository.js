@@ -195,9 +195,13 @@ class AlumnoRepository {
 
   buscarPorRutEnActividad(rut, actividad) {
     const bd = obtenerConexion();
+    let clave = String(rut || "").trim().toUpperCase().replace(/\./g, "");
+    if (clave && !clave.includes("-") && clave.length >= 2) {
+      clave = clave.slice(0, -1) + "-" + clave.slice(-1);
+    }
     const fila = bd
       .prepare(`SELECT * FROM alumnos WHERE rut = ? AND actividad = ?`)
-      .get(rut, actividad);
+      .get(clave || rut, actividad);
     if (!fila) return null;
     const alumno = aplanarBasico(fila);
     cargarAdyacentes(bd, [alumno]);

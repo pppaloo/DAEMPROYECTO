@@ -65,6 +65,8 @@ const TIPOS_SOLICITUD = {
   RECURSOS: "recursos",
   PARTICIPACION: "participacion",
   OTRO: "otro",
+  // El coordinador propone inscribir un estudiante y el Admin DAEM aprueba.
+  INSCRIPCION: "inscripcion",
 };
 
 const POSICIONES = ["1º", "2º", "3º"];

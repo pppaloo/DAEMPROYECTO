@@ -1,6 +1,6 @@
 const { DEPENDENCIAS } = require("../constants/catalogos");
 
-// Establecimiento educacional participante (ej: A-59, D-868).
+// Establecimiento educacional participante (RBD del MINEDUC, solo numeros).
 class Establecimiento {
   #codigo;
   #nombre;
@@ -26,10 +26,11 @@ class Establecimiento {
 
   set codigo(valor) {
     const limpio = String(valor || "").trim();
-    if (!/^[A-Za-z](?:-\d+)?$/.test(limpio) && !/^\d{1,4}$/.test(limpio)) {
-      throw new Error("Codigo de establecimiento invalido (ej: A-59, D-868)");
+    // RBD del MINEDUC: solo numeros, de 1 a 6 digitos (sin letras ni simbolos).
+    if (!/^\d{1,6}$/.test(limpio)) {
+      throw new Error("El RBD debe tener solo numeros (1 a 6 digitos)");
     }
-    this.#codigo = limpio.toUpperCase();
+    this.#codigo = limpio;
   }
 
   get nombre() {
