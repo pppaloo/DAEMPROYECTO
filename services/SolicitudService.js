@@ -43,13 +43,29 @@ class SolicitudService {
       throw new Error("Solo puede solicitar inscripciones para su establecimiento");
     }
 
-    const alumno = datos.alumno || {};
-    const rut = String(alumno.rut || "").trim();
-    const nombre = String(alumno.nombre || "").trim();
-    const fechaNacimiento = alumno.fechaNacimiento || "";
-    if (!rut) throw new Error("El RUT del estudiante es obligatorio");
-    if (!nombre) throw new Error("El nombre del estudiante es obligatorio");
-    if (!fechaNacimiento) throw new Error("La fecha de nacimiento es obligatoria");
+    const alumnosInput = Array.isArray(datos.alumnos) && datos.alumnos.length
+      ? datos.alumnos
+      : (datos.alumno ? [datos.alumno] : []);
+    if (!alumnosInput.length) throw new Error("Debe indicar al menos un estudiante");
+
+    // Validar cada alumno
+    const alumnos = alumnosInput.map((al) => {
+      const rut = String(al.rut || "").trim();
+      const nombre = String(al.nombre || "").trim();
+      const fechaNacimiento = al.fechaNacimiento || "";
+      if (!rut) throw new Error("El RUT del estudiante es obligatorio");
+      if (!nombre) throw new Error("El nombre del estudiante es obligatorio");
+      if (!fechaNacimiento) throw new Error("La fecha de nacimiento es obligatoria");
+      return {
+        rut,
+        nombre,
+        genero: al.genero || "",
+        fechaNacimiento,
+        apoderado: al.apoderado || "",
+        email: al.email || "",
+        telefono: al.telefono || "",
+      };
+    });
 
     const inscripcionId = datos.inscripcion ? Number(datos.inscripcion) : null;
     const torneoId = datos.torneo ? Number(datos.torneo) : null;
@@ -89,9 +105,13 @@ class SolicitudService {
       throw new Error("Seleccione la inscripcion, el torneo o la actividad/categoria");
     }
 
+    const detalleAlumnos = alumnos.length === 1
+      ? `Inscripcion de ${alumnos[0].nombre} (${alumnos[0].rut}) en ${destino}`
+      : `Inscripcion de ${alumnos.length} estudiantes en ${destino}`;
+
     const solicitud = new Solicitud(
       TIPOS_SOLICITUD.INSCRIPCION,
-      `Inscripcion de ${nombre} (${rut}) en ${destino}`,
+      detalleAlumnos,
       usuario.rut,
       usuario.rol === "coordinador" ? usuario.rut : "",
       actividadId
@@ -108,15 +128,7 @@ class SolicitudService {
       inscripcion: inscripcionId,
       torneo: torneoId,
       division,
-      alumno: {
-        rut,
-        nombre,
-        genero: alumno.genero || "",
-        fechaNacimiento,
-        apoderado: alumno.apoderado || "",
-        email: alumno.email || "",
-        telefono: alumno.telefono || "",
-      },
+      alumnos,
     });
   }
 
@@ -164,38 +176,45 @@ class SolicitudService {
   async #agregarEstudiante(solicitud, usuario) {
     const estId = solicitud.establecimiento?.id;
     if (!estId) throw new Error("La solicitud no tiene establecimiento");
-    const alumno = {
-      rut: solicitud.alumno.rut,
-      nombre: solicitud.alumno.nombre,
-      genero: solicitud.alumno.genero,
-      fechaNacimiento: solicitud.alumno.fechaNacimiento,
-      apoderado: solicitud.alumno.apoderado,
-      email: solicitud.alumno.email,
-      telefono: solicitud.alumno.telefono,
-    };
+    const alumnos = (solicitud.alumnos && solicitud.alumnos.length)
+      ? solicitud.alumnos
+      : (solicitud.alumno && solicitud.alumno.rut ? [solicitud.alumno] : []);
+    if (!alumnos.length) throw new Error("La solicitud no tiene estudiantes");
 
-    if (solicitud.inscripcion) {
-      return this.#inscripcionService.agregarAlumno(solicitud.inscripcion, alumno, usuario);
+    const resultados = [];
+    for (const al of alumnos) {
+      const alumno = {
+        rut: al.rut,
+        nombre: al.nombre,
+        genero: al.genero,
+        fechaNacimiento: al.fechaNacimiento,
+        apoderado: al.apoderado,
+        email: al.email,
+        telefono: al.telefono,
+      };
+      if (solicitud.inscripcion) {
+        resultados.push(await this.#inscripcionService.agregarAlumno(solicitud.inscripcion, alumno, usuario));
+      } else if (solicitud.torneo) {
+        resultados.push(await this.#inscripcionService.postularTorneo(
+          solicitud.torneo,
+          { alumno, establecimiento: estId },
+          usuario
+        ));
+      } else if (solicitud.actividad) {
+        resultados.push(await this.#inscripcionService.postular(
+          {
+            actividad: solicitud.actividad.id ?? solicitud.actividad,
+            division: solicitud.division,
+            establecimiento: estId,
+            alumno,
+          },
+          usuario
+        ));
+      } else {
+        throw new Error("La solicitud no indica donde inscribir al estudiante");
+      }
     }
-    if (solicitud.torneo) {
-      return this.#inscripcionService.postularTorneo(
-        solicitud.torneo,
-        { alumno, establecimiento: estId },
-        usuario
-      );
-    }
-    if (solicitud.actividad) {
-      return this.#inscripcionService.postular(
-        {
-          actividad: solicitud.actividad.id ?? solicitud.actividad,
-          division: solicitud.division,
-          establecimiento: estId,
-          alumno,
-        },
-        usuario
-      );
-    }
-    throw new Error("La solicitud no indica donde inscribir al estudiante");
+    return resultados;
   }
 
   async eliminar(id, usuario) {

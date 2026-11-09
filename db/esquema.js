@@ -270,6 +270,7 @@ const CREAR_TABLAS = [
   // Admin DAEM debe aprobar/rechazar antes de agregarlo a la nomina.
   `CREATE TABLE IF NOT EXISTS solicitudes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    codigo TEXT NOT NULL DEFAULT '' UNIQUE,
     tipo TEXT NOT NULL CHECK (tipo IN ('recursos','participacion','otro','inscripcion')),
     detalle TEXT NOT NULL,
     estado TEXT NOT NULL DEFAULT 'en_proceso'
@@ -292,6 +293,20 @@ const CREAR_TABLAS = [
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
+
+  // ---------- Solicitud <-> alumno (lote de alumnos por solicitud) ----------
+  `CREATE TABLE IF NOT EXISTS solicitud_alumnos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    solicitud INTEGER NOT NULL REFERENCES solicitudes (id) ON DELETE CASCADE,
+    rut TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    genero TEXT NOT NULL DEFAULT '',
+    fechaNacimiento TEXT DEFAULT NULL,
+    apoderado TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    telefono TEXT NOT NULL DEFAULT ''
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_solicitud_alumnos_solicitud ON solicitud_alumnos (solicitud)`,
 
   // ---------- Notificacion ----------
   `CREATE TABLE IF NOT EXISTS notificaciones (
@@ -402,6 +417,38 @@ function aplicarMigraciones(bd) {
   agregarSiFalta("solicitudes", "alumnoApoderado", "alumnoApoderado TEXT NOT NULL DEFAULT ''");
   agregarSiFalta("solicitudes", "alumnoEmail", "alumnoEmail TEXT NOT NULL DEFAULT ''");
   agregarSiFalta("solicitudes", "alumnoTelefono", "alumnoTelefono TEXT NOT NULL DEFAULT ''");
+
+  // Codigo unico de lote para solicitudes (aparte del id numerico).
+  agregarSiFalta("solicitudes", "codigo", "codigo TEXT NOT NULL DEFAULT ''");
+  // Tabla de alumnos por solicitud (lote).
+  bd.exec(`CREATE TABLE IF NOT EXISTS solicitud_alumnos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    solicitud INTEGER NOT NULL REFERENCES solicitudes (id) ON DELETE CASCADE,
+    rut TEXT NOT NULL,
+    nombre TEXT NOT NULL,
+    genero TEXT NOT NULL DEFAULT '',
+    fechaNacimiento TEXT DEFAULT NULL,
+    apoderado TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    telefono TEXT NOT NULL DEFAULT ''
+  )`);
+  bd.exec(`CREATE INDEX IF NOT EXISTS idx_solicitud_alumnos_solicitud ON solicitud_alumnos (solicitud)`);
+  // Migrar alumnos existentes (una solicitud con un solo alumno) a la tabla de lote.
+  const existentes = bd
+    .prepare(`SELECT id, alumnoRut, alumnoNombre, alumnoGenero, alumnoFechaNacimiento, alumnoApoderado, alumnoEmail, alumnoTelefono FROM solicitudes WHERE alumnoRut <> ''`)
+    .all();
+  for (const s of existentes) {
+    const ya = bd.prepare(`SELECT 1 FROM solicitud_alumnos WHERE solicitud = ?`).get(s.id);
+    if (!ya) {
+      bd.prepare(`INSERT INTO solicitud_alumnos (solicitud, rut, nombre, genero, fechaNacimiento, apoderado, email, telefono) VALUES (?,?,?,?,?,?,?,?)`)
+        .run(s.id, s.alumnoRut, s.alumnoNombre, s.alumnoGenero, s.alumnoFechaNacimiento, s.alumnoApoderado, s.alumnoEmail, s.alumnoTelefono);
+    }
+  }
+  // Asignar codigo a solicitudes que no lo tengan.
+  const sinCodigo = bd.prepare(`SELECT id FROM solicitudes WHERE codigo = '' OR codigo IS NULL`).all();
+  for (const s of sinCodigo) {
+    bd.prepare(`UPDATE solicitudes SET codigo = ? WHERE id = ?`).run(`SOL-${s.id}`, s.id);
+  }
 
   // Las areas ya no tienen CHECK fijo: se puedan agregar dinamicamente.
   // SQLite no puede alterar un CHECK, asi que se recrean las tablas que lo

@@ -1094,6 +1094,14 @@ async function guardarFormEstablecimiento() {
   if (!/^\d{1,6}$/.test(datos.codigo)) {
     mostrarMensaje("El RBD debe tener solo numeros (1 a 6 digitos).", "error");
     return;
+  // Validar que el RBD exista en el listado MINEDUC (solo al crear).
+  if (form.modo !== "editar") {
+    const existe = (DIRECTORIO_MENU.directorio || []).some((e) => String(e.rbd) === String(datos.codigo));
+    if (!existe) {
+      mostrarMensaje("El RBD no existe en el listado de Establecimientos MINEDUC.", "error");
+      return;
+    }
+  }
   }
   try {
     if (form.modo === "editar") {
@@ -3055,9 +3063,10 @@ function fechaSolicitud(valor) {
 }
 
 function filaSolicitudHtml(s, conAcciones) {
+  const nAl = (s.alumnos && s.alumnos.length) ? s.alumnos.length : (s.alumno && s.alumno.rut ? 1 : 0);
   return `<tr>
-    <td>${esc(s.tipo)}</td>
-    <td>${esc(s.detalle)}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+    <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
+    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
     <td>${esc(fechaSolicitud(s.createdAt))}</td>
@@ -3695,7 +3704,11 @@ async function panelCoordTorneos() {
     API.nomina().catch(() => ({ alumnos: [] })),
   ]);
   const alumnos = nomina.alumnos || [];
-  const pTorneos = paginarUI(torneos, "coordTorneos");
+  const FILTRO_FORMATO_TOR = window.__filtroFormatoTor || "";
+  const torneosFiltrados = FILTRO_FORMATO_TOR
+    ? torneos.filter((t) => (t.formato || "amistoso") === FILTRO_FORMATO_TOR)
+    : torneos;
+  const pTorneos = paginarUI(torneosFiltrados, "coordTorneos");
 
   const tarjetaTorneo = (t) => {
     const actId = t.actividad ? String(t.actividad._id || t.actividad) : "";
@@ -3752,6 +3765,14 @@ async function panelCoordTorneos() {
 
   contenido(
     `<h2 class="pagina">Postular a Torneos</h2>
+     <div class="act-buscador">
+       <label>Formato:</label>
+       <select id="filtro-formato-tor">
+         <option value="">Todos</option>
+         <option value="competitivo">Competitivo</option>
+         <option value="amistoso">Amistoso</option>
+       </select>
+     </div>
      <p class="muted">Torneos programados por el Admin DAEM. Postule estudiantes de la nomina de la actividad correspondiente o solicite el registro de uno nuevo (el Admin DAEM debe aprobarlo antes de agregarlo a la nomina y al torneo).</p>
      ${torneos.length ? pTorneos.items.map(tarjetaTorneo).join("") + htmlPaginacion("coordTorneos", pTorneos) : `<div class="tarjeta"><p class="muted">No hay torneos en periodo de inscripciones.</p></div>`}`
   );
@@ -3817,6 +3838,14 @@ async function panelCoordTorneos() {
       } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
+  const selFiltro = document.getElementById("filtro-formato-tor");
+  if (selFiltro) {
+    selFiltro.value = window.__filtroFormatoTor || "";
+    selFiltro.onchange = () => {
+      window.__filtroFormatoTor = selFiltro.value;
+      panelCoordTorneos();
+    };
+  }
   conectarPaginacion(panelCoordTorneos);
 }
 
@@ -3865,7 +3894,9 @@ async function panelCoordSolicitudesImpl() {
          <div class="campo"><label>Género</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
          <div class="campo"><label>Fecha nacimiento</label><input type="date" id="al-fecha"></div>
        </div>
-       <button class="btn btn-ok" id="btn-guardar-al">Enviar solicitud</button>
+        <button class="btn btn-mini" id="btn-agregar-al-lote">+ Agregar a la lista</button>
+        <div id="al-lote-lista" style="margin-top:10px"></div>
+        <button class="btn btn-ok" id="btn-guardar-al" style="margin-top:10px">Enviar solicitud (lote)</button>
      </div>
      ${tabsSolicitudesHtml(tab, pendientes, historial, "coord")}
      <h3 class="pagina">${tab === "pend" ? "Pendientes" : "Historial"} (${items.length})</h3>
@@ -3910,37 +3941,50 @@ async function panelCoordSolicitudesImpl() {
   }
 
   // Envío del formulario
-  $("#btn-guardar-al").onclick = async () => {
+  let alumnosLote = [];
+  const renderLote = () => {
+    const cont = $("#al-lote-lista");
+    if (!cont) return;
+    if (!alumnosLote.length) { cont.innerHTML = "<p class=\"muted\">Sin estudiantes en el lote.</p>"; return; }
+    cont.innerHTML = `<table class="tabla-desglose"><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Fecha nac.</th><th></th></tr></thead><tbody>${alumnosLote.map((a, i) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero)}</td><td>${esc(a.fechaNacimiento)}</td><td><button class="btn btn-mini btn-err2" data-quitar-lote="${i}">Quitar</button></td></tr>`).join("")}</tbody></table>`;
+    cont.querySelectorAll("[data-quitar-lote]").forEach((b) => {
+      b.onclick = () => { alumnosLote.splice(Number(b.dataset.quitarLote), 1); renderLote(); };
+    });
+  };
+  renderLote();
+  $("#btn-agregar-al-lote").onclick = () => {
     const destino = document.querySelector("[name='al-destino']:checked")?.value || "inscripcion";
-    const rut    = $("#al-rut").value.trim();
+    const rut = $("#al-rut").value.trim();
     const nombre = $("#al-nombre").value.trim();
     const genero = $("#al-genero").value;
-    const fecha  = $("#al-fecha").value;
+    const fecha = $("#al-fecha").value;
     if (!rut || !nombre) { mostrarMensaje("Complete al menos RUT y Nombre del alumno.", "error"); return; }
-
+    if (destino === "torneo" && !fecha) { mostrarMensaje("Ingrese la fecha de nacimiento del alumno.", "error"); return; }
+    alumnosLote.push({ rut, nombre, genero, fechaNacimiento: fecha, apoderado: "", email: "", telefono: "" });
+    $("#al-rut").value = ""; $("#al-nombre").value = ""; $("#al-fecha").value = "";
+    renderLote();
+  };
+  $("#btn-guardar-al").onclick = async () => {
+    const destino = document.querySelector("[name='al-destino']:checked")?.value || "inscripcion";
+    // Si hay datos en los campos pero no se agregaron, agregarlos automaticamente
+    const rut = $("#al-rut").value.trim();
+    const nombre = $("#al-nombre").value.trim();
+    if (rut && nombre && !alumnosLote.length) {
+      alumnosLote.push({ rut, nombre, genero: $("#al-genero").value, fechaNacimiento: $("#al-fecha").value, apoderado: "", email: "", telefono: "" });
+    }
+    if (!alumnosLote.length) { mostrarMensaje("Agregue al menos un estudiante al lote.", "error"); return; }
     if (destino === "torneo") {
       const tId = selTor ? selTor.value : "";
       if (!tId) { mostrarMensaje("Seleccione un torneo disponible.", "error"); return; }
-      if (!fecha) { mostrarMensaje("Ingrese la fecha de nacimiento del alumno.", "error"); return; }
-      // Validacion de requisitos en el cliente antes de enviar
-      const t = torneosDisp.find((x) => String(x._id) === String(tId));
-      const errorReq = validarRequisitosAlumnoFront(fecha, genero, t ? (t.division || "") : "", t ? (t.requisitos || null) : null);
-      if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
       try {
-        const r = await API.solicitarEstudiante({
-          torneo: tId,
-          alumno: { rut, nombre, genero, fechaNacimiento: fecha },
-        });
+        const r = await API.solicitarEstudiante({ torneo: tId, alumnos: alumnosLote });
         mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
         panelCoordSolicitudes();
       } catch (err) { mostrarMensaje(err.message, "error"); }
     } else {
       if (!$("#al-ins").value) { mostrarMensaje("Seleccione una inscripción aceptada.", "error"); return; }
       try {
-        const r = await API.solicitarEstudiante({
-          inscripcion: $("#al-ins").value,
-          alumno: { rut, nombre, genero, fechaNacimiento: fecha },
-        });
+        const r = await API.solicitarEstudiante({ inscripcion: $("#al-ins").value, alumnos: alumnosLote });
         mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
         panelCoordSolicitudes();
       } catch (err) { mostrarMensaje(err.message, "error"); }
@@ -3968,10 +4012,22 @@ async function panelCoordNomina() {
   const categorias = [...new Set(alumnos.map((a) => a.division).filter(Boolean))].sort();
   const subcategorias = ["Damas", "Varones"].map((s) => ({ valor: s, texto: s }));
 
+  const resumenPorActividad = actividades.map((act) => ({
+    actividad: act,
+    total: alumnos.filter((a) => a.actividad && a.actividad.nombre === act).length,
+  }));
+
   contenido(
     `<div class="encabezado"><h2 class="pagina">Nomina Interna de Estudiantes</h2>
        <button class="btn btn-primario2" id="btn-filtrar">Filtrar</button></div>
      <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Total</div></div>
+     <div class="tarjeta" style="margin-bottom:12px">
+       <h3>Registrados por actividad</h3>
+       <table><thead><tr><th>Actividad</th><th>Cantidad</th></tr></thead>
+       <tbody>${resumenPorActividad.length
+         ? resumenPorActividad.map((r) => `<tr><td>${esc(r.actividad)}</td><td class="act-num">${r.total}</td></tr>`).join("")
+         : `<tr><td colspan="2" class="muted">Sin actividades.</td></tr>`}</tbody></table>
+     </div>
      <div class="nomina-fila">
        <div class="nomina-lista" id="alumnos-lista"></div>
        <div class="tarjeta oculta nomina-filtros" id="nomina-filtros">

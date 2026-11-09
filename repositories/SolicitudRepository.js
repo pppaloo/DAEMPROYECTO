@@ -25,6 +25,7 @@ function aSolicitud(s) {
   return {
     id: s.id,
     _id: s.id,
+    codigo: s.codigo || "",
     tipo: s.tipo,
     detalle: s.detalle,
     estado: s.estado,
@@ -62,9 +63,31 @@ function aSolicitud(s) {
       email: s.alumnoEmail,
       telefono: s.alumnoTelefono,
     },
+    alumnos: [],
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   };
+}
+
+function cargarAlumnos(bd, solicitud) {
+  if (!solicitud) return solicitud;
+  const filas = bd.prepare(`SELECT * FROM solicitud_alumnos WHERE solicitud = ?`).all(solicitud.id);
+  solicitud.alumnos = filas.map((f) => ({
+    id: f.id,
+    _id: f.id,
+    rut: f.rut,
+    nombre: f.nombre,
+    genero: f.genero,
+    fechaNacimiento: f.fechaNacimiento,
+    apoderado: f.apoderado,
+    email: f.email,
+    telefono: f.telefono,
+  }));
+  // compatibilidad: si no hay alumnos en la tabla, usar el alumno legacy
+  if (!solicitud.alumnos.length && solicitud.alumno && solicitud.alumno.rut) {
+    solicitud.alumnos = [{ ...solicitud.alumno, id: null, _id: null }];
+  }
+  return solicitud;
 }
 
 function construirFiltro(filtro) {
@@ -96,16 +119,18 @@ function construirFiltro(filtro) {
 class SolicitudRepository {
   crear(solicitud) {
     const bd = obtenerConexion();
+    const codigo = solicitud.codigo || `SOL-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     const r = bd
       .prepare(
         `INSERT INTO solicitudes
-          (tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
+          (codigo, tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
            establecimiento, respuesta, inscripcion, torneo, division,
            alumnoRut, alumnoNombre, alumnoGenero, alumnoFechaNacimiento,
            alumnoApoderado, alumnoEmail, alumnoTelefono)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
+        codigo,
         solicitud.tipo,
         solicitud.detalle,
         solicitud.estado ?? "en_proceso",
@@ -117,15 +142,21 @@ class SolicitudRepository {
         solicitud.inscripcion ?? null,
         solicitud.torneo ?? null,
         solicitud.division ?? "",
-        solicitud.alumno?.rut ?? "",
-        solicitud.alumno?.nombre ?? "",
-        solicitud.alumno?.genero ?? "",
-        solicitud.alumno?.fechaNacimiento ?? null,
-        solicitud.alumno?.apoderado ?? "",
-        solicitud.alumno?.email ?? "",
-        solicitud.alumno?.telefono ?? ""
+        (solicitud.alumnos && solicitud.alumnos[0]?.rut) || solicitud.alumno?.rut || "",
+        (solicitud.alumnos && solicitud.alumnos[0]?.nombre) || solicitud.alumno?.nombre || "",
+        (solicitud.alumnos && solicitud.alumnos[0]?.genero) || solicitud.alumno?.genero || "",
+        (solicitud.alumnos && solicitud.alumnos[0]?.fechaNacimiento) || solicitud.alumno?.fechaNacimiento || null,
+        (solicitud.alumnos && solicitud.alumnos[0]?.apoderado) || solicitud.alumno?.apoderado || "",
+        (solicitud.alumnos && solicitud.alumnos[0]?.email) || solicitud.alumno?.email || "",
+        (solicitud.alumnos && solicitud.alumnos[0]?.telefono) || solicitud.alumno?.telefono || ""
       );
-    return this.obtenerPorId(r.lastInsertRowid);
+    const sid = r.lastInsertRowid;
+    const alumnos = Array.isArray(solicitud.alumnos) ? solicitud.alumnos : (solicitud.alumno ? [solicitud.alumno] : []);
+    const insertAl = bd.prepare(`INSERT INTO solicitud_alumnos (solicitud, rut, nombre, genero, fechaNacimiento, apoderado, email, telefono) VALUES (?,?,?,?,?,?,?,?)`);
+    for (const a of alumnos) {
+      insertAl.run(sid, a.rut || "", a.nombre || "", a.genero || "", a.fechaNacimiento || null, a.apoderado || "", a.email || "", a.telefono || "");
+    }
+    return cargarAlumnos(bd, this.obtenerPorId(sid));
   }
 
   obtenerTodos(filtro = {}) {
@@ -134,13 +165,14 @@ class SolicitudRepository {
     return bd
       .prepare(`${SQL_SOLICITUDES} ${where} ORDER BY s.updatedAt DESC, s.id DESC`)
       .all(...params)
-      .map(aSolicitud);
+      .map(aSolicitud)
+      .map((s) => cargarAlumnos(bd, s));
   }
 
   obtenerPorId(id) {
     const bd = obtenerConexion();
     const fila = bd.prepare(`${SQL_SOLICITUDES} WHERE s.id = ?`).get(id);
-    return fila ? aSolicitud(fila) : null;
+    return fila ? cargarAlumnos(bd, aSolicitud(fila)) : null;
   }
 
   actualizar(id, datos) {
