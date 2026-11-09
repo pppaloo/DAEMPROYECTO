@@ -3739,8 +3739,9 @@ async function panelCoordTorneos() {
       <div class="grid-2">
         <div class="campo">
           <label>Postular desde la nomina (${esc(actNombre)} - ${esc(division)})</label>
-          <select data-tor-nom="${t._id}">${opciones}</select>
-          <button class="btn btn-ok btn-mini" data-post-nom="${t._id}">Postular seleccionado</button>
+          ${candidatos.length
+            ? `<div class="lote-candidatos" data-tor-lote="${t._id}" style="max-height:160px;overflow:auto;border:1px solid var(--borde);padding:6px;border-radius:6px;margin-bottom:6px">${candidatos.map((a) => `<label style="display:block"><input type="checkbox" value="${a._id}"> ${esc(a.rut)} - ${esc(a.nombre)}</label>`).join("")}</div><button class="btn btn-ok btn-mini" data-post-lote="${t._id}">Postular seleccionados</button>`
+            : `<p class="muted">Sin estudiantes disponibles en esta categoria</p>`}
         </div>
 <div class="campo">
             <label>O registrar un estudiante nuevo</label>
@@ -3804,16 +3805,20 @@ async function panelCoordTorneos() {
 
   const refrescar = () => panelCoordTorneos();
 
-  document.querySelectorAll("[data-post-nom]").forEach((b) => {
+  document.querySelectorAll("[data-post-lote]").forEach((b) => {
     b.onclick = async () => {
-      const id = b.dataset.postNom;
-      const sel = document.querySelector(`[data-tor-nom="${id}"]`);
-      const alumnoId = sel && sel.value;
-      if (!alumnoId) { mostrarMensaje("Seleccione un estudiante de la nomina"); return; }
-      try {
-        const r = await API.postularTorneo(id, { alumnoId });
-        mostrarMensaje(r.mensaje); refrescar();
-      } catch (err) { mostrarMensaje(err.message, "error"); }
+      const id = b.dataset.postLote;
+      const cont = document.querySelector(`[data-tor-lote="${id}"]`);
+      const checks = cont ? [...cont.querySelectorAll("input[type=checkbox]:checked")] : [];
+      const ids = checks.map((c) => c.value);
+      if (!ids.length) { mostrarMensaje("Seleccione al menos un estudiante.", "error"); return; }
+      let ok = 0, fail = 0;
+      for (const aid of ids) {
+        try { await API.postularTorneo(id, { alumnoId: aid }); ok++; }
+        catch (err) { fail++; mostrarMensaje(err.message, "error"); }
+      }
+      mostrarMensaje(`Postulados: ${ok}${fail ? `, fallidos: ${fail}` : ""}`, ok ? "ok" : "error");
+      refrescar();
     };
   });
 
