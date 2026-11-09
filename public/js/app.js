@@ -3062,20 +3062,35 @@ function fechaSolicitud(valor) {
   return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
 }
 
-function filaSolicitudHtml(s, conAcciones) {
-  const nAl = (s.alumnos && s.alumnos.length) ? s.alumnos.length : (s.alumno && s.alumno.rut ? 1 : 0);
-  return `<tr>
-    <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
-    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${nAl > 1 ? ` <button class="btn btn-mini" data-ver-sol="${s._id}">Ver estudiantes</button>` : ""}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+﻿function filaSolicitudHtml(s, conAcciones) {
+  const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
+  const nAl = alumnos.length;
+  if (!nAl) {
+    return `<tr>
+      <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
+      <td>${esc(s.detalle)}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+      <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
+      <td>${esc(s.rutSolicitante || "-")}</td>
+      <td>${esc(fechaSolicitud(s.createdAt))}</td>
+      <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
+      ${conAcciones ? `<td>
+        <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
+        <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
+      </td>` : ""}
+    </tr>`;
+  }
+  return alumnos.map((a, idx) => `<tr>
+    <td>${idx === 0 ? esc(s.tipo) + (s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : "") : ""}</td>
+    <td>${esc(a.nombre || a.rut)} <span class="muted">${esc(a.rut)}</span>${idx === 0 ? ` <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>` : ""}</td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
-    <td>${esc(fechaSolicitud(s.createdAt))}</td>
+    <td>${idx === 0 ? esc(fechaSolicitud(s.createdAt)) : ""}</td>
     <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
-    ${conAcciones ? `<td>
+    ${conAcciones && idx === 0 ? `<td>
       <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
       <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
-    </td>` : ""}
-  </tr>`;
+    </td>` : (conAcciones ? "<td></td>" : "")}
+  </tr>`).join("");
 }
 
 function tablaSolicitudesHtml(items, prefijo, conAcciones) {
