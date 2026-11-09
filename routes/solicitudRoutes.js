@@ -21,6 +21,6 @@ router.post("/estudiante", autorizarRol("admin", "coordinador"), (req, res) =>
 router.put("/:id/estado", autorizarRol("admin", "coordinador"), (req, res) =>
   controller.cambiarEstado(req, res)
 );
-router.delete("/:id", autorizarRol("admin"), (req, res) => controller.eliminar(req, res));
+router.delete("/:id", autorizarRol("admin", "coordinador"), (req, res) => controller.eliminar(req, res));
 
 module.exports = router;

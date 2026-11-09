@@ -4030,8 +4030,22 @@ function tablaAlumnosNomina(alumnos) {
 }
 
 async function panelCoordNomina() {
-  const nomina = await API.nomina();
+  const [nomina, solicitudes] = await Promise.all([API.nomina().catch(() => ({ alumnos: [], total: 0 })), API.solicitudes().catch(() => [])]);
   const alumnos = nomina.alumnos || [];
+  const solicitados = [];
+  for (const sol of solicitudes) {
+    const als = (sol.alumnos && sol.alumnos.length) ? sol.alumnos : (sol.alumno && sol.alumno.rut ? [sol.alumno] : []);
+    for (const a of als) {
+      solicitados.push({
+        _id: sol._id,
+        estudiante: a.nombre || a.rut,
+        rut: a.rut,
+        actividad: sol.actividad ? sol.actividad.nombre : "-",
+        division: sol.division || "-",
+        estado: sol.estado,
+      });
+    }
+  }
   // Actividades y categorias presentes en la nomina del propio establecimiento.
   const actividades = [...new Set(alumnos.map((a) => a.actividad && a.actividad.nombre).filter(Boolean))].sort();
   const categorias = [...new Set(alumnos.map((a) => a.division).filter(Boolean))].sort();
@@ -4047,13 +4061,12 @@ async function panelCoordNomina() {
        <button class="btn btn-primario2" id="btn-filtrar">Filtrar</button></div>
      <div class="stat"><div class="num">${nomina.total}</div><div class="lbl">Total</div></div>
      <div class="tarjeta" style="margin-bottom:12px">
-       <h3>Registrados por actividad</h3>
-       <table><thead><tr><th>Actividad</th><th>Cantidad</th></tr></thead>
-       <tbody>${resumenPorActividad.length
-         ? resumenPorActividad.map((r) => `<tr><td>${esc(r.actividad)}</td><td class="act-num">${r.total}</td></tr>`).join("")
-         : `<tr><td colspan="2" class="muted">Sin actividades.</td></tr>`}</tbody></table>
+       <h3>Estudiantes solicitados</h3>
+       <table><thead><tr><th>Estudiante</th><th>Actividad</th><th>Division</th><th>Estado</th><th>Acciones</th></tr></thead>
+       <tbody>${solicitados.length
+         ? solicitados.map((r) => `<tr><td>${esc(r.estudiante)} <span class="muted">${esc(r.rut)}</span></td><td>${esc(r.actividad)}</td><td>${esc(r.division)}</td><td><span class="estado est-${esc(r.estado)}">${esc(r.estado)}</span></td><td>${r.estado === "en_proceso" ? `<button class="btn btn-err2 btn-mini" data-retract-sol="${r._id}">Retractar</button>` : "-"}</td></tr>`).join("")
+         : `<tr><td colspan="4" class="muted">Sin estudiantes solicitados.</td></tr>`}</tbody></table>
      </div>
-     <div class="nomina-fila">
        <div class="nomina-lista" id="alumnos-lista"></div>
        <div class="tarjeta oculta nomina-filtros" id="nomina-filtros">
          <h3>Filtrar</h3>
@@ -4105,6 +4118,14 @@ async function panelCoordNomina() {
     aplicarFiltro();
   };
   render();
+
+  document.querySelectorAll("[data-retract-sol]").forEach((b) => {
+    b.onclick = async () => {
+      if (!await confirmarMensaje("Retractar esta solicitud?", "Retractar", "Retractar", true)) return;
+      try { await API.eliminarSolicitud(b.dataset.retractSol); panelCoordNomina(); }
+      catch (err) { mostrarMensaje(err.message, "error"); }
+    };
+  });
 }
 
 // ============================================================

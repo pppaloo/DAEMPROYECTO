@@ -212,6 +212,7 @@ const API = {
   async responderSolicitud(id, estado, respuesta) {
     return this.peticion("PUT", `/api/solicitudes/${id}/estado`, { estado, respuesta });
   },
+  async eliminarSolicitud(id) { return this.peticion("DELETE", `/api/solicitudes/${id}`); },
 
   // ---------- Valoraciones ----------
   async ranking() { return this.peticion("GET", "/api/reportes/ranking"); },
