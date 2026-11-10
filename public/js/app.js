@@ -3081,36 +3081,21 @@ function fechaSolicitud(valor) {
   return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
 }
 
-function filaSolicitudHtml(s, conAcciones) {
+﻿function filaSolicitudHtml(s, conAcciones) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
   const nAl = alumnos.length;
-  const detId = "sol-det-" + s._id;
-  const detalle = alumnos.length
-    ? `<table class="tabla-desglose"><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Fecha nac.</th></tr></thead><tbody>${alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero || "-")}</td><td>${esc(a.fechaNacimiento || "-")}</td></tr>`).join("")}</tbody></table>`
-    : "<p class=\"muted\">Sin estudiantes.</p>";
-  return `<tr class="sol-fila-principal" data-sol-id="${s._id}">
+  return `<tr>
     <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
-    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${nAl > 1 ? ` <button class="btn btn-mini" data-ver-sol="${s._id}">Ver estudiantes</button>` : ""}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
     <td>${esc(fechaSolicitud(s.createdAt))}</td>
     <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
-    <td>
-      ${nAl > 1 ? `<button class="btn btn-mini" data-toggle-sol="${s._id}" data-det="${detId}">▼</button> ` : ""}
-      ${conAcciones ? `<button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
-      <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>` : ""}
-    </td>
-  </tr>
-  <tr id="${detId}" class="sol-detalle oculta"><td colspan="7">${detalle}</td></tr>`;
-}
-
-// Botones superiores: alternan entre Pendientes e Historial (reemplazan el
-// listado, no se muestran ambos a la vez).
-function tabsSolicitudesHtml(tab, pendientes, historial, scope) {
-  return `<div class="seccion">
-      <button class="btn ${tab === "pend" ? "btn-primario2" : "btn-mini"}" data-sol-tab="pend" data-sol-scope="${scope}">Pendientes (${pendientes.length})</button>
-      <button class="btn ${tab === "hist" ? "btn-primario2" : "btn-mini"}" data-sol-tab="hist" data-sol-scope="${scope}">Historial (${historial.length})</button>
-    </div>`;
+    ${conAcciones ? `<td>
+      <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
+      <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
+    </td>` : ""}
+  </tr>`;
 }
 
 function tablaSolicitudesHtml(items, prefijo, conAcciones) {
