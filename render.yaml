@@ -7,15 +7,9 @@ services:
     buildCommand: npm install
     startCommand: npm start
     healthCheckPath: /api/health
-    disk:
-      name: daem-data
-      mountPath: /app/data
-      sizeGB: 1
     envVars:
       - key: NODE_VERSION
         value: 20
-      - key: DB_PATH
-        value: /app/data/daem.db
       - key: APP_URL
         sync: false
       - key: JWT_SECRET
@@ -36,3 +30,11 @@ services:
         sync: false
       - key: RECAPTCHA_SECRET_KEY
         sync: false
+# NOTA: En el plan gratuito de Render no hay disco persistente, por lo que la
+# base de datos SQLite se reinicia en cada deploy/reinicio. Para persistencia
+# real, cambia plan: starter (de pago) y descomenta el bloque disk de abajo.
+# disk:
+#   name: daem-data
+#   mountPath: /app/data
+#   sizeGB: 1
+# y agrega la variable DB_PATH=/app/data/daem.db
