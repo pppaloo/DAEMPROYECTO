@@ -6,7 +6,7 @@ const $ = (sel) => document.querySelector(sel);
 const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 
 // ---------- Parametros de campos: solo letras en nombres, formato RUT y limites ----------
-const MX = { letras: 60, nombre: 80, rut: 12, clave: 10, correo: 40, codigo: 12, telefono: 20 };
+const MX = { letras: 60, nombre: 80, rut: 12, clave: 30, correo: 40, codigo: 12, telefono: 20 };
 const RE_LETRAS = /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ´.\- ]/g;
 const RE_RUT = /[^0-9kK]/g;
 
