@@ -3081,46 +3081,27 @@ function fechaSolicitud(valor) {
   return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
 }
 
-﻿function filaSolicitudHtml(s, conAcciones) {
+﻿﻿function filaSolicitudHtml(s, conAcciones) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
   const nAl = alumnos.length;
-  if (!nAl) {
-    return `<tr>
-      <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
-      <td>${esc(s.detalle)}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
-      <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
-      <td>${esc(s.rutSolicitante || "-")}</td>
-      <td>${esc(fechaSolicitud(s.createdAt))}</td>
-      <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
-      ${conAcciones ? `<td>
-        <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
-        <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
-      </td>` : ""}
-    </tr>`;
-  }
-  return alumnos.map((a, idx) => `<tr>
-    <td>${idx === 0 ? esc(s.tipo) + (s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : "") : ""}</td>
-    <td>${esc(a.nombre || a.rut)} <span class="muted">${esc(a.rut)}</span>${idx === 0 ? ` <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>` : ""}</td>
+  const detId = "sol-det-" + s._id;
+  const detalle = alumnos.length
+    ? `<table class="tabla-desglose"><thead><tr><th>RUT</th><th>Nombre</th><th>Genero</th><th>Fecha nac.</th></tr></thead><tbody>${alumnos.map((a) => `<tr><td>${esc(a.rut)}</td><td>${esc(a.nombre)}</td><td>${esc(a.genero || "-")}</td><td>${esc(a.fechaNacimiento || "-")}</td></tr>`).join("")}</tbody></table>`
+    : "<p class=\"muted\">Sin estudiantes.</p>";
+  return `<tr class="sol-fila-principal" data-sol-id="${s._id}">
+    <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
+    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
-    <td>${idx === 0 ? esc(fechaSolicitud(s.createdAt)) : ""}</td>
+    <td>${esc(fechaSolicitud(s.createdAt))}</td>
     <td><span class="estado est-${esc(s.estado)}">${esc(s.estado)}</span></td>
-    ${conAcciones && idx === 0 ? `<td>
-      <button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
-      <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
-    </td>` : (conAcciones ? "<td></td>" : "")}
-  </tr>`).join("");
-}
-
-function tablaSolicitudesHtml(items, prefijo, conAcciones) {
-  const p = paginarUI(items, prefijo);
-  return `<div class="tarjeta">
-    <table><thead><tr><th>Tipo</th><th>Detalle</th><th>Establecimiento</th><th>Solicitante</th><th>Fecha</th><th>Estado</th>${conAcciones ? "<th>Acciones</th>" : ""}</tr></thead>
-    <tbody>${p.items.length
-      ? p.items.map((s) => filaSolicitudHtml(s, conAcciones)).join("")
-      : `<tr><td colspan="${conAcciones ? 7 : 6}" class="muted">Sin solicitudes.</td></tr>`}</tbody></table>
-    ${htmlPaginacion(prefijo, p)}
-  </div>`;
+    <td>
+      ${nAl > 1 ? `<button class="btn btn-mini" data-toggle-sol="${s._id}" data-det="${detId}">▼</button> ` : ""}
+      ${conAcciones ? `<button class="btn btn-ok btn-mini" data-sol-acc="${s._id}" data-sol-est="aprobada">Aprobar</button>
+      <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>` : ""}
+    </td>
+  </tr>
+  <tr id="${detId}" class="sol-detalle oculta"><td colspan="7">${detalle}</td></tr>`;
 }
 
 // Botones superiores: alternan entre Pendientes e Historial (reemplazan el
@@ -3961,6 +3942,15 @@ async function panelCoordSolicitudesImpl() {
 
   conectarTabsSolicitudes("coord", panelCoordSolicitudes);
   conectarPaginacion(panelCoordSolicitudes);
+  document.querySelectorAll("[data-toggle-sol]").forEach((b) => {
+    b.onclick = () => {
+      const det = document.getElementById(b.dataset.det);
+      if (!det) return;
+      const abierto = !det.classList.contains("oculta");
+      det.classList.toggle("oculta", abierto);
+      b.textContent = abierto ? "▼" : "▲";
+    };
+  });
   document.querySelectorAll("[data-ver-sol]").forEach((b) => {
     b.onclick = () => {
       const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
