@@ -12,7 +12,10 @@ const RE_RUT = /[^0-9kK]/g;
 
 // Formatea un RUT mientras se escribe: 22.113.000-6
 function formatearRutInput(valor) {
-  const limpio = String(valor || "").replace(RE_RUT, "").toUpperCase().slice(0, 9);
+  const raw = String(valor || "").trim();
+  // RBD (1-6 digitos) no se formatea como RUT
+  if (/^\\d{1,6}$/.test(raw)) return raw;
+  const limpio = raw.replace(RE_RUT, "").toUpperCase().slice(0, 9);
   if (limpio.length <= 1) return limpio;
   const dv = limpio.slice(-1);
   const cuerpo = limpio.slice(0, -1);
@@ -265,7 +268,7 @@ function opcionesActividadCategoria(act) {
       out.push({
         valor: String(a._id),
         texto: d ? `${a.nombre} - ${d}` : a.nombre,
-        extra: { actividad: String(a._id), division: d, nombre: a.nombre },
+        extra: { actividad: String(a._id), division: d, nombre: a.nombre, area: a.area },
       });
     });
   });
@@ -1825,7 +1828,8 @@ async function panelAdminTorneos() {
      <div id="form-nuevo-tor" class="tarjeta oculta">
        <div class="grid-2">
          <div class="campo"><label>Nombre</label><input id="tor-nombre"></div>
-         <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("tor-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="tor-act"><input type="hidden" id="tor-div"></div>
+         <div class="campo"><label>Area</label><select id="tor-area"><option value="">Todas</option>${(CAT.areas || []).map((a) => `<option>${esc(a)}</option>`).join("")}</select></div>
+        <div class="campo"><label>Actividad (Categoria)</label>${comboHtml("tor-act-txt", "Buscar actividad y categoria...")}<input type="hidden" id="tor-act"><input type="hidden" id="tor-div"></div>
          <div class="campo"><label>Formato</label><select id="tor-formato"><option value="amistoso">Amistoso</option><option value="competitivo">Competitivo</option></select></div>
        </div>
        <button class="btn btn-ok" id="btn-guardar-tor">Guardar</button>
@@ -1929,6 +1933,21 @@ async function panelAdminTorneos() {
     if (nombre && !nombre.value.trim()) {
       nombre.value = o.extra.division ? `Torneo de ${o.extra.nombre} ${o.extra.division}` : `Torneo de ${o.extra.nombre}`;
     }
+  });
+  // Filtrar actividades por area seleccionada
+  const opActCatAll = opActCat;
+  $("#tor-area").addEventListener("change", () => {
+    const area = $("#tor-area").value;
+    const filtradas = area ? opActCatAll.filter((o) => o.extra.area === area) : opActCatAll;
+    initCombo("tor-act-txt", filtradas, (o) => {
+      $("#tor-act").value = o.extra.actividad;
+      $("#tor-div").value = o.extra.division;
+      const nombre = $("#tor-nombre");
+      if (nombre && !nombre.value.trim()) {
+        nombre.value = o.extra.division ? `Torneo de ${o.extra.nombre} ${o.extra.division}` : `Torneo de ${o.extra.nombre}`;
+      }
+    });
+    $("#tor-act").value = ""; $("#tor-div").value = "";
   });
   $("#btn-guardar-tor").onclick = async () => {
     try {

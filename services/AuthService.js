@@ -1,22 +1,35 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Usuario = require("../domain/Usuario");
-const UsuarioRepository = require("../repositories/UsuarioRepository");
+const EstablecimientoRepository = require("../repositories/EstablecimientoRepository");
 const CorreoService = require("./CorreoService");
 
 class AuthService {
   #usuarios;
+  #establecimientos;
   #correo;
 
   constructor() {
     this.#usuarios = new UsuarioRepository();
+    this.#establecimientos = new EstablecimientoRepository();
     this.#correo = new CorreoService();
   }
 
   async login(rut, clave) {
     if (!rut || !clave) throw new Error("Debe ingresar RUT y clave");
-
-    const usuario = await this.#usuarios.obtenerPorRut(rut);
+    let usuario = null;
+    const limpio = String(rut).trim();
+    // Coordinador puede ingresar con el RBD de su establecimiento
+    if (/^\\d{1,6}$/.test(limpio)) {
+      const est = await this.#establecimientos.obtenerPorCodigo(limpio);
+      if (est) {
+        const todos = await this.#usuarios.obtenerTodos();
+        usuario = todos.find((u) => String(u.rol) === "coordinador" && String(u.establecimiento && (u.establecimiento.id ?? u.establecimiento._id ?? u.establecimiento)) === String(est.id));
+      }
+    }
+    if (!usuario) {
+      usuario = await this.#usuarios.obtenerPorRut(limpio);
+    }
     if (!usuario) throw new Error("Credenciales invalidas");
 
     const claveValida = bcrypt.compareSync(clave, usuario.claveHash);
