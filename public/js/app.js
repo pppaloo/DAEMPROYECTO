@@ -3081,7 +3081,14 @@ function fechaSolicitud(valor) {
   return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
 }
 
-﻿function filaSolicitudHtml(s, conAcciones) {
+function tabsSolicitudesHtml(tab, pendientes, historial, scope) {
+  return `<div class="seccion">
+      <button class="btn ${tab === "pend" ? "btn-primario2" : "btn-mini"}" data-sol-tab="pend" data-sol-scope="${scope}">Pendientes (${pendientes.length})</button>
+      <button class="btn ${tab === "hist" ? "btn-primario2" : "btn-mini"}" data-sol-tab="hist" data-sol-scope="${scope}">Historial (${historial.length})</button>
+    </div>`;
+}
+
+function filaSolicitudHtml(s, conAcciones) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
   const nAl = alumnos.length;
   return `<tr>
