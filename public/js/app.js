@@ -4254,11 +4254,16 @@ async function panelLectorEstudiantes() {
 }
 
 let __inactividadTimer = null;
+const INACTIVIDAD_MS = 10 * 60 * 1000; // 10 minutos
+function cerrarPorInactividad() {
+  if (!API.token) return;
+  API.limpiar();
+  mostrarLogin();
+  mostrarMensaje("Sesion cerrada por inactividad.", "info");
+}
 function reiniciarInactividad() {
   if (__inactividadTimer) clearTimeout(__inactividadTimer);
-  __inactividadTimer = setTimeout(() => {
-    alert("La pagina esta por cerrarse por inactividad (5 minutos sin uso).");
-  }, 5 * 60 * 1000);
+  __inactividadTimer = setTimeout(cerrarPorInactividad, INACTIVIDAD_MS);
 }
 function iniciarInactividad() {
   ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((ev) => {
