@@ -3766,9 +3766,10 @@ async function panelCoordTorneos() {
   ]);
   const alumnos = nomina.alumnos || [];
   const FILTRO_FORMATO_TOR = window.__filtroFormatoTor || "";
-  const torneosFiltrados = FILTRO_FORMATO_TOR
-    ? torneos.filter((t) => (t.formato || "amistoso") === FILTRO_FORMATO_TOR)
-    : torneos;
+  const FILTRO_AREA_TOR = window.__filtroAreaTor || "";
+  let torneosFiltrados = torneos;
+  if (FILTRO_FORMATO_TOR) torneosFiltrados = torneosFiltrados.filter((t) => (t.formato || "amistoso") === FILTRO_FORMATO_TOR);
+  if (FILTRO_AREA_TOR) torneosFiltrados = torneosFiltrados.filter((t) => (t.actividad && t.actividad.area) === FILTRO_AREA_TOR);
   const pTorneos = paginarUI(torneosFiltrados, "coordTorneos");
 
   const tarjetaTorneo = (t) => {
@@ -3828,6 +3829,11 @@ async function panelCoordTorneos() {
   contenido(
     `<h2 class="pagina">Postular a Torneos</h2>
      <div class="act-buscador">
+       <label>Area:</label>
+       <select id="filtro-area-tor">
+         <option value="">Todas</option>
+         ${(CAT.areas || []).map((a) => `<option value="${esc(a)}">${esc(a)}</option>`).join("")}
+       </select>
        <label>Formato:</label>
        <select id="filtro-formato-tor">
          <option value="">Todos</option>
@@ -3904,6 +3910,14 @@ async function panelCoordTorneos() {
       } catch (err) { mostrarMensaje(err.message, "error"); }
     };
   });
+  const selArea = document.getElementById("filtro-area-tor");
+  if (selArea) {
+    selArea.value = window.__filtroAreaTor || "";
+    selArea.onchange = () => {
+      window.__filtroAreaTor = selArea.value;
+      panelCoordTorneos();
+    };
+  }
   const selFiltro = document.getElementById("filtro-formato-tor");
   if (selFiltro) {
     selFiltro.value = window.__filtroFormatoTor || "";
