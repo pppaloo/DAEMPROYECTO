@@ -2,10 +2,10 @@ const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
 
-const DIR_DATOS = path.join(__dirname, "..", "data");
 const RUTA_DB = process.env.DB_PATH
   ? process.env.DB_PATH
-  : path.join(DIR_DATOS, "daem.db");
+  : path.join(__dirname, "..", "data", "daem.db");
+const DIR_DATOS = path.dirname(RUTA_DB);
 
 let bd = null;
 
