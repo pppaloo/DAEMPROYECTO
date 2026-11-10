@@ -3362,8 +3362,14 @@ async function panelAdminReportes() {
        ${htmlPaginacion("repPart", pPart)}
      </div>
      <div class="tarjeta"><h3>Trazabilidad Historica</h3>
-       <p class="muted">${esc(JSON.stringify(hist.porAnio || []))}</p>
-     </div>`
+        <table><thead><tr><th>Anio</th><th>Beneficiarios</th><th>Inscripciones</th></tr></thead>
+        <tbody>${(hist.porAnio || []).length
+          ? (hist.porAnio || []).map((a) => {
+              const insc = (hist.inscripcionesPorAnio && hist.inscripcionesPorAnio[a.anio]) ? hist.inscripcionesPorAnio[a.anio].total : 0;
+              return `<tr><td>${esc(a.anio)}</td><td>${a.beneficiarios}</td><td>${insc}</td></tr>`;
+            }).join("")
+          : `<tr><td colspan="3" class="muted">Sin datos historicos.</td></tr>`}</tbody></table>
+      </div>`
   );
   conectarPaginacion(panelAdminReportes);
 }
