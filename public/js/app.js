@@ -3156,6 +3156,15 @@ async function panelAdminSolicitudes() {
   );
   conectarTabsSolicitudes("admin", panelAdminSolicitudes);
   conectarPaginacion(panelAdminSolicitudes);
+  document.querySelectorAll("[data-toggle-sol]").forEach((b) => {
+    b.onclick = () => {
+      const det = document.getElementById(b.dataset.det);
+      if (!det) return;
+      const abierto = !det.classList.contains("oculta");
+      det.classList.toggle("oculta", abierto);
+      b.textContent = abierto ? "▼" : "▲";
+    };
+  });
   document.querySelectorAll("[data-ver-sol]").forEach((b) => {
     b.onclick = () => {
       const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
