@@ -4234,9 +4234,24 @@ async function panelLectorEstudiantes() {
   conectarPaginacion(panelLectorEstudiantes);
 }
 
+let __inactividadTimer = null;
+function reiniciarInactividad() {
+  if (__inactividadTimer) clearTimeout(__inactividadTimer);
+  __inactividadTimer = setTimeout(() => {
+    alert("La pagina esta por cerrarse por inactividad (5 minutos sin uso).");
+  }, 5 * 60 * 1000);
+}
+function iniciarInactividad() {
+  ["mousemove", "keydown", "click", "scroll", "touchstart"].forEach((ev) => {
+    document.addEventListener(ev, reiniciarInactividad, { passive: true });
+  });
+  reiniciarInactividad();
+}
+
 // ---------- Init ----------
 function init() {
   API.loadToken();
+  iniciarInactividad();
   document.addEventListener("input", (e) => {
     if (e.target && e.target.tagName === "INPUT") normalizarCampo(e.target);
   });
