@@ -3131,6 +3131,24 @@ function conectarTabsSolicitudes(scope, recargar) {
   });
 }
 
+function mostrarModalEstudiantes(s) {
+  const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
+  const overlay = document.createElement("div");
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;";
+  const card = document.createElement("div");
+  card.style.cssText = "background:#fff;border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
+  card.innerHTML = `<h3 style="margin-top:0">Estudiantes de la solicitud ${esc(s.codigo || s._id)}</h3>
+    <table style="width:100%;border-collapse:collapse">
+      <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">RUT</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Nombre</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Genero</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Fecha nac.</th></tr></thead>
+      <tbody>${alumnos.map((a) => `<tr><td style="padding:6px">${esc(a.rut)}</td><td style="padding:6px">${esc(a.nombre)}</td><td style="padding:6px">${esc(a.genero || "-")}</td><td style="padding:6px">${esc(a.fechaNacimiento || "-")}</td></tr>`).join("")}</tbody>
+    </table>
+    <div style="text-align:right;margin-top:14px"><button class="btn btn-mini" id="cerrar-modal-est">Cerrar</button></div>`;
+  overlay.appendChild(card);
+  document.body.appendChild(overlay);
+  card.querySelector("#cerrar-modal-est").onclick = () => overlay.remove();
+  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+}
+
 async function panelAdminSolicitudes() {
   const sol = await API.solicitudes();
   window.SOLICITUDES_CACHE = sol;
@@ -3163,7 +3181,7 @@ async function panelAdminSolicitudes() {
       if (!s) return;
       const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
       const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
-      alert(`Estudiantes de la solicitud ${s.codigo || s._id}:\\n\\n${txt}`);
+      mostrarModalEstudiantes(s);
     };
   });
   document.querySelectorAll("[data-sol-acc]").forEach((b) => {
@@ -3969,7 +3987,7 @@ async function panelCoordSolicitudesImpl() {
       if (!s) return;
       const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
       const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
-      alert(`Estudiantes de la solicitud ${s.codigo || s._id}:\\n\\n${txt}`);
+      mostrarModalEstudiantes(s);
     };
   });
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
