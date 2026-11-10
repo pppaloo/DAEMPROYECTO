@@ -1,6 +1,7 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const Usuario = require("../domain/Usuario");
+const UsuarioRepository = require("../repositories/UsuarioRepository");
 const EstablecimientoRepository = require("../repositories/EstablecimientoRepository");
 const CorreoService = require("./CorreoService");
 
@@ -20,7 +21,7 @@ class AuthService {
     let usuario = null;
     const limpio = String(rut).trim();
     // Coordinador puede ingresar con el RBD de su establecimiento
-    if (/^\\d{1,6}$/.test(limpio)) {
+    if (/^\d{1,6}$/.test(limpio)) {
       const est = await this.#establecimientos.obtenerPorCodigo(limpio);
       if (est) {
         const todos = await this.#usuarios.obtenerTodos();

@@ -14,7 +14,7 @@ const RE_RUT = /[^0-9kK]/g;
 function formatearRutInput(valor) {
   const raw = String(valor || "").trim();
   // RBD (1-6 digitos) no se formatea como RUT
-  if (/^\\d{1,6}$/.test(raw)) return raw;
+  if (/^\d{1,6}$/.test(raw)) return raw;
   const limpio = raw.replace(RE_RUT, "").toUpperCase().slice(0, 9);
   if (limpio.length <= 1) return limpio;
   const dv = limpio.slice(-1);
