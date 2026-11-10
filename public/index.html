@@ -25,7 +25,10 @@
         <label for="login-rut">RUT o RBD</label>
         <input type="text" id="login-rut" placeholder="Ej: 11.111.111-1 o 123" required />
         <label for="login-clave">Clave</label>
-        <input type="password" id="login-clave" required />
+        <div style="position:relative">
+          <input type="password" id="login-clave" required style="padding-right:42px" />
+          <button type="button" id="btn-ver-clave" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);border:none;background:transparent;cursor:pointer;font-size:18px;line-height:1" aria-label="Mostrar clave">👁</button>
+        </div>
         <p id="login-error" class="error oculta"></p>
         <button type="submit" class="btn-primario">Ingresar</button>
         <button type="button" id="btn-olvidar" class="login-enlace">Olvide mi clave</button>
@@ -93,6 +96,6 @@
   </template>
 
   <script src="/js/api.js"></script>
-  <script src="/js/app.js?v=59"></script>
+  <script src="/js/app.js?v=60"></script>
 </body>
 </html>

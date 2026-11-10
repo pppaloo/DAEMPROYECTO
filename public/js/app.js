@@ -4270,6 +4270,13 @@ function iniciarInactividad() {
 // ---------- Init ----------
 function init() {
   API.loadToken();
+  const btnVerClave = document.getElementById("btn-ver-clave");
+  if (btnVerClave) btnVerClave.onclick = () => {
+    const inp = document.getElementById("login-clave");
+    if (!inp) return;
+    if (inp.type === "password") { inp.type = "text"; btnVerClave.textContent = "\u{1F648}"; }
+    else { inp.type = "password"; btnVerClave.textContent = "\u{1F441}"; }
+  };
   iniciarInactividad();
   document.addEventListener("input", (e) => {
     if (e.target && e.target.tagName === "INPUT") normalizarCampo(e.target);
