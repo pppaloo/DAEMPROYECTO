@@ -1172,7 +1172,7 @@ async function panelAdminUsuarios() {
        <div class="grid-2">
          <div class="campo"><label>RUT</label><input id="usr-rut"></div>
          <div class="campo"><label>Nombre</label><input id="usr-nombre"></div>
-         <div class="campo"><label>Rol</label><select id="usr-rol"><option value="coordinador">Coordinador</option><option value="lector">Lector</option></select></div>
+         <div class="campo"><label>Rol</label><select id="usr-rol"><option value="coordinador">Coordinador</option><option value="lector">Director</option></select></div>
          <div class="campo"><label>Clave</label><input id="usr-clave"></div>
          <div class="campo"><label>Correo</label><input id="usr-correo" type="email"></div>
          <div class="campo"><label>Establecimiento</label>
@@ -1185,7 +1185,7 @@ async function panelAdminUsuarios() {
        <div class="grid-2">
          <div class="campo"><label>RUT</label><input id="usr-edit-rut" readonly></div>
          <div class="campo"><label>Nombre</label><input id="usr-edit-nombre"></div>
-         <div class="campo"><label>Rol</label><select id="usr-edit-rol"><option value="admin">Admin</option><option value="coordinador">Coordinador</option><option value="lector">Lector</option></select></div>
+         <div class="campo"><label>Rol</label><select id="usr-edit-rol"><option value="admin">Admin</option><option value="coordinador">Coordinador</option><option value="lector">Director</option></select></div>
          <div class="campo"><label>Correo</label><input id="usr-edit-correo" type="email"></div>
          <div class="campo"><label>Establecimiento</label>
            ${comboHtml("usr-edit-est-txt", "Buscar establecimiento...")}<input type="hidden" id="usr-edit-est"></div>
@@ -1199,7 +1199,7 @@ async function panelAdminUsuarios() {
          <option value="">Todos los roles</option>
          <option value="admin">Admin</option>
          <option value="coordinador">Coordinador</option>
-         <option value="lector">Lector</option>
+         <option value="lector">Director</option>
        </select>
        <select id="filtro-est-usr" class="buscador-select" aria-label="Filtrar por establecimiento">
          <option value="">Todos los establecimientos</option>
