@@ -3362,7 +3362,7 @@ async function panelAdminReportes() {
        ${htmlPaginacion("repPart", pPart)}
      </div>
      <div class="tarjeta"><h3>Trazabilidad Historica</h3>
-        <table><thead><tr><th>Anio</th><th>Beneficiarios</th><th>Inscripciones</th></tr></thead>
+        <table><thead><tr><th>Año</th><th>Beneficiarios</th><th>Inscripciones</th></tr></thead>
         <tbody>${(hist.porAnio || []).length
           ? (hist.porAnio || []).map((a) => {
               const insc = (hist.inscripcionesPorAnio && hist.inscripcionesPorAnio[a.anio]) ? hist.inscripcionesPorAnio[a.anio].total : 0;
