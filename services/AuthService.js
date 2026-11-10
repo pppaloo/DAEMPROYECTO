@@ -25,7 +25,7 @@ class AuthService {
       const est = await this.#establecimientos.obtenerPorCodigo(limpio);
       if (est) {
         const todos = await this.#usuarios.obtenerTodos();
-        usuario = todos.find((u) => String(u.rol) === "coordinador" && String(u.establecimiento && (u.establecimiento.id ?? u.establecimiento._id ?? u.establecimiento)) === String(est.id));
+        usuario = todos.find((u) => ["coordinador", "lector"].includes(String(u.rol)) && String(u.establecimiento && (u.establecimiento.id ?? u.establecimiento._id ?? u.establecimiento)) === String(est.id));
       }
     }
     if (!usuario) {
