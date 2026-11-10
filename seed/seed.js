@@ -15,7 +15,7 @@ const EquipoRepository = require("../repositories/EquipoRepository");
 const LlaveRepository = require("../repositories/LlaveRepository");
 const ValoracionRepository = require("../repositories/ValoracionRepository");
 
-const ROLES_ADMIN = { rut: process.env.SEED_ADMIN_RUT, clave: process.env.SEED_ADMIN_CLAVE, nombre: "Directora DAEM" };
+const ROLES_ADMIN = { rut: process.env.SEED_ADMIN_RUT || "11111111-1", clave: process.env.SEED_ADMIN_CLAVE || "admin123", nombre: "Directora DAEM" };
 
 const COLEGIOS = [
   { codigo: "A-59", nombre: "Escuela Basica Los Aromos", dependencia: "Municipal" },
