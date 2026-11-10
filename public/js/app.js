@@ -3081,7 +3081,7 @@ function fechaSolicitud(valor) {
   return isNaN(d) ? String(valor) : d.toLocaleString("es-CL");
 }
 
-﻿﻿function filaSolicitudHtml(s, conAcciones) {
+function filaSolicitudHtml(s, conAcciones) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
   const nAl = alumnos.length;
   const detId = "sol-det-" + s._id;
@@ -3111,6 +3111,17 @@ function tabsSolicitudesHtml(tab, pendientes, historial, scope) {
       <button class="btn ${tab === "pend" ? "btn-primario2" : "btn-mini"}" data-sol-tab="pend" data-sol-scope="${scope}">Pendientes (${pendientes.length})</button>
       <button class="btn ${tab === "hist" ? "btn-primario2" : "btn-mini"}" data-sol-tab="hist" data-sol-scope="${scope}">Historial (${historial.length})</button>
     </div>`;
+}
+
+function tablaSolicitudesHtml(items, prefijo, conAcciones) {
+  const p = paginarUI(items, prefijo);
+  return `<div class="tarjeta">
+    <table><thead><tr><th>Tipo</th><th>Detalle</th><th>Establecimiento</th><th>Solicitante</th><th>Fecha</th><th>Estado</th>${conAcciones ? "<th>Acciones</th>" : ""}</tr></thead>
+    <tbody>${p.items.length
+      ? p.items.map((s) => filaSolicitudHtml(s, conAcciones)).join("")
+      : `<tr><td colspan="${conAcciones ? 7 : 6}" class="muted">Sin solicitudes.</td></tr>`}</tbody></table>
+    ${htmlPaginacion(prefijo, p)}
+  </div>`;
 }
 
 function conectarTabsSolicitudes(scope, recargar) {
