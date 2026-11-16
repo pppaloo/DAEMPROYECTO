@@ -2,10 +2,8 @@
 // consultado a traves del servicio ArcGIS publico de la IDE (SMA). No requiere
 // llave.
 //
-// El panel muestra SOLO los establecimientos de la comuna de Los Angeles
-// (region del Biobio). Se descarga una vez la comuna completa y se filtra en
-// memoria, porque el servicio no permite buscar por texto en las columnas de
-// nombre (solo permite filtrar por codigo de comuna, que es numerico).
+// El panel muestra SOLO los establecimientos de la Region del Biobio.
+// Se descarga la region completa y se filtra en memoria si es necesario.
 const SERVICIO =
   "https://ideserver.sma.gob.cl/arcgis/rest/services/IDE/Infraestructura_rural_urbana/MapServer";
 
@@ -17,7 +15,9 @@ const CAMPOS = [
   "RBD",
   "DGV_RBD",
   "NOM_RBD",
+  "COD_REG_RB",
   "NOM_REG_RB",
+  "COD_COM_RB",
   "NOM_COM_RB",
   "NOM_DEPROV",
   "TIPO_SOST",
@@ -90,7 +90,7 @@ class DirectorioService {
   async #cargarComuna() {
     if (this.#cache && Date.now() - this.#cache.ts < CACHE_TTL) return this.#cache.establecimientos;
     const params = new URLSearchParams({
-      where: `COD_COM_RB=${COD_COMUNA_LOS_ANGELES}`,
+      where: `COD_REG_RB=8`,
       outFields: CAMPOS,
       returnGeometry: "false",
       f: "json",
@@ -104,7 +104,7 @@ class DirectorioService {
   }
 
   async buscar({ q = "", rbd = "", limite = 200 } = {}) {
-    const tope = Math.min(Math.max(Number(limite) || 200, 1), 200);
+    const tope = Math.min(Math.max(Number(limite) || 2000, 1), 2000);
     const texto = normalizar(q);
     const codigo = String(rbd || "").replace(/[^0-9]/g, "");
 
@@ -116,7 +116,7 @@ class DirectorioService {
       coincidencias = todos.filter((e) => normalizar(e.nombre).includes(texto));
     }
     return {
-      comuna: COMUNA_LOS_ANGELES,
+      comuna: "Región del Biobío",
       total: coincidencias.length,
       resultados: coincidencias.slice(0, tope),
     };
