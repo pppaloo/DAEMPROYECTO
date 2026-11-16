@@ -2,8 +2,10 @@
 // consultado a traves del servicio ArcGIS publico de la IDE (SMA). No requiere
 // llave.
 //
-// El panel muestra SOLO los establecimientos de la Region del Biobio.
-// Se descarga la region completa y se filtra en memoria si es necesario.
+// El panel muestra SOLO los establecimientos de la comuna de Los Angeles
+// (region del Biobio). Se descarga una vez la comuna completa y se filtra en
+// memoria, porque el servicio no permite buscar por texto en las columnas de
+// nombre (solo permite filtrar por codigo de comuna, que es numerico).
 const SERVICIO =
   "https://ideserver.sma.gob.cl/arcgis/rest/services/IDE/Infraestructura_rural_urbana/MapServer";
 
@@ -31,7 +33,7 @@ const CAMPOS = [
 
 const CACHE_TTL = 12 * 60 * 60 * 1000; // 12 horas
 
-async function traerJson(url, ms = 12000) {
+async function traerJson(url, ms = 60000) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ms);
   try {
@@ -90,7 +92,7 @@ class DirectorioService {
   async #cargarComuna() {
     if (this.#cache && Date.now() - this.#cache.ts < CACHE_TTL) return this.#cache.establecimientos;
     const params = new URLSearchParams({
-      where: `COD_REG_RB=8`,
+      where: `COD_COM_RB=${COD_COMUNA_LOS_ANGELES}`,
       outFields: CAMPOS,
       returnGeometry: "false",
       f: "json",
@@ -116,7 +118,7 @@ class DirectorioService {
       coincidencias = todos.filter((e) => normalizar(e.nombre).includes(texto));
     }
     return {
-      comuna: "Región del Biobío",
+      comuna: COMUNA_LOS_ANGELES,
       total: coincidencias.length,
       resultados: coincidencias.slice(0, tope),
     };
