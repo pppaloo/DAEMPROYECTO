@@ -1,4 +1,4 @@
-// ============================================================
+﻿// ============================================================
 // SPA DAEM: orquesta login, autenticacion por rol y paneles.
 // ============================================================
 
@@ -7,7 +7,7 @@ const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 
 // ---------- Parametros de campos: solo letras en nombres, formato RUT y limites ----------
 const MX = { letras: 60, nombre: 80, rut: 12, clave: 30, correo: 40, codigo: 12, telefono: 20 };
-const RE_LETRAS = /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ´.\- ]/g;
+const RE_LETRAS = /[^A-Za-zÃÃ‰ÃÃ“ÃšÃœÃ‘Ã¡Ã©Ã­Ã³ÃºÃ¼Ã±Â´.\- ]/g;
 const RE_RUT = /[^0-9kK]/g;
 
 // Formatea un RUT mientras se escribe: 22.113.000-6
@@ -25,8 +25,8 @@ function formatearRutInput(valor) {
 const RE_CODIGO = /[^A-Za-z0-9.\- ]/g;
 const RE_TEL = /[^\d+()\-. ]/g;
 
-// ---------- Catálogo de divisiones (espejo del servidor) ----------
-// Se usa para validar el rango de año de nacimiento en el cliente
+// ---------- CatÃ¡logo de divisiones (espejo del servidor) ----------
+// Se usa para validar el rango de aÃ±o de nacimiento en el cliente
 // antes de enviar la solicitud, sin esperar la respuesta del servidor.
 const DIVISIONES_CAT = [
   { nombre: "MINIS",   desde: 2016, hasta: 2018 },
@@ -44,27 +44,27 @@ const DIVISIONES_CAT = [
  * @param {string} division         - nombre de la categoria (ej. "SUB 13")
  * @param {object|null} reqTorneo   - objeto requisitos del torneo
  *   { activo, edadMinima, edadMaxima, genero }  (puede ser null)
- * @returns {string|null} Mensaje de error o null si todo está bien.
+ * @returns {string|null} Mensaje de error o null si todo estÃ¡ bien.
  */
 function validarRequisitosAlumnoFront(fechaNacimiento, genero, division, reqTorneo) {
   if (!fechaNacimiento) return null;
 
   const nac = new Date(fechaNacimiento);
-  if (isNaN(nac)) return "Fecha de nacimiento inválida.";
+  if (isNaN(nac)) return "Fecha de nacimiento invÃ¡lida.";
 
   const anioNac = nac.getFullYear();
 
-  // 1. Validación por categoría (año de nacimiento vs. rango de la división)
+  // 1. ValidaciÃ³n por categorÃ­a (aÃ±o de nacimiento vs. rango de la divisiÃ³n)
   if (division) {
     const div = DIVISIONES_CAT.find((d) => d.nombre === division);
     if (div && div.desde !== null) {
       if (anioNac < div.desde || anioNac > div.hasta) {
-        return `La categoría ${division} requiere nacer entre ${div.desde} y ${div.hasta}. El alumno nació en ${anioNac}.`;
+        return `La categorÃ­a ${division} requiere nacer entre ${div.desde} y ${div.hasta}. El alumno naciÃ³ en ${anioNac}.`;
       }
     }
   }
 
-  // 2. Requisitos del torneo (edad mín/máx y género)
+  // 2. Requisitos del torneo (edad mÃ­n/mÃ¡x y gÃ©nero)
   if (reqTorneo && reqTorneo.activo) {
     const hoy = new Date();
     let edad = hoy.getFullYear() - anioNac;
@@ -72,10 +72,10 @@ function validarRequisitosAlumnoFront(fechaNacimiento, genero, division, reqTorn
     if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
 
     if (reqTorneo.edadMinima != null && edad < reqTorneo.edadMinima) {
-      return `El alumno tiene ${edad} año(s), menor a la edad mínima del torneo (${reqTorneo.edadMinima} años).`;
+      return `El alumno tiene ${edad} aÃ±o(s), menor a la edad mÃ­nima del torneo (${reqTorneo.edadMinima} aÃ±os).`;
     }
     if (reqTorneo.edadMaxima != null && edad > reqTorneo.edadMaxima) {
-      return `El alumno tiene ${edad} año(s), mayor a la edad máxima del torneo (${reqTorneo.edadMaxima} años).`;
+      return `El alumno tiene ${edad} aÃ±o(s), mayor a la edad mÃ¡xima del torneo (${reqTorneo.edadMaxima} aÃ±os).`;
     }
     if (reqTorneo.genero && ["varones", "damas"].includes(reqTorneo.genero) && genero && genero !== "Otro") {
       const permitido = reqTorneo.genero === "varones" ? "M" : "F";
@@ -156,7 +156,7 @@ const mostrarExito = (msg) => mostrarMensaje(msg, "ok");
 function mostrarMensaje(texto, tipo) {
   const msg = String(texto);
   if (!tipo) {
-    const pareceError = /(error|no se pudo|no se puede|no pueden|inv[aá]lid|seleccione|complete|indique|debe|deben|sin |no hay|no tiene|no existe|ya existe|fall[oó]|incorrect|obligatori|requerid)/i.test(msg);
+    const pareceError = /(error|no se pudo|no se puede|no pueden|inv[aÃ¡]lid|seleccione|complete|indique|debe|deben|sin |no hay|no tiene|no existe|ya existe|fall[oÃ³]|incorrect|obligatori|requerid)/i.test(msg);
     tipo = pareceError ? "error" : "ok";
   }
   let cont = document.getElementById("tostadas");
@@ -491,7 +491,7 @@ async function panelFeriados() {
     `<div class="encabezado"><h2 class="pagina">Feriados en Chile</h2></div>
      <div class="tarjeta">
        <p class="muted">Consulta los feriados legales de Chile para planificar el calendario de encuentros.</p>
-       <div class="campo" style="max-width:200px"><label>Año</label><input type="number" id="fer-anio" min="2020" max="2030" value="${anioActual}"></div>
+       <div class="campo" style="max-width:200px"><label>AÃ±o</label><input type="number" id="fer-anio" min="2020" max="2030" value="${anioActual}"></div>
        <button class="btn btn-primario2" id="btn-fer-buscar">Consultar</button>
        <span class="muted" id="fer-fuente"></span>
      </div>
@@ -911,7 +911,7 @@ function renderDirectorioPanel() {
     `<div class="encabezado">
        <div>
          <h2 class="pagina">Establecimientos</h2>
-         <p class="muted">Establecimientos de Los Ángeles y los que usted ha agregado.</p>
+         <p class="muted">Establecimientos de Los Ãngeles y los que usted ha agregado.</p>
        </div>
        <div style="display:flex;gap:8px;flex-wrap:wrap">
          <button class="btn ${esMineduc ? "btn-primario2" : "btn-mini"}" id="dir-ver-mineduc">Establecimientos MINEDUC (${DIRECTORIO_MENU.directorio.length})</button>
@@ -968,7 +968,7 @@ function renderDirectorioPanel() {
 
 function htmlListaMineduc() {
   return `<div class="tarjeta">
-      <p class="muted">Listado oficial de la comuna de <strong>Los Ángeles</strong> (Datos Abiertos MINEDUC). Busque por nombre o RBD y agregue el establecimiento a su lista.</p>
+      <p class="muted">Listado oficial de la comuna de <strong>Los Ãngeles</strong> (Datos Abiertos MINEDUC). Busque por nombre o RBD y agregue el establecimiento a su lista.</p>
       <div class="campo" style="max-width:420px"><label>Buscar por nombre o RBD</label>
         <input type="text" id="dir-filtro" value="${esc(DIRECTORIO_MENU.filtro)}" placeholder="Ej: Escuela o 4201" autocomplete="off"></div>
     </div>
@@ -989,7 +989,7 @@ function pintarTablaMineduc() {
     return String(e.rbd).includes(texto) || normalizarTexto(e.nombre).includes(texto);
   });
   if (!lista.length) {
-    cont.innerHTML = `<div class="tarjeta muted">Sin coincidencias en Establecimientos MINEDUC de Los Ángeles.</div>`;
+    cont.innerHTML = `<div class="tarjeta muted">Sin coincidencias en Establecimientos MINEDUC de Los Ãngeles.</div>`;
     return;
   }
   const p = paginar(lista, DIRECTORIO_MENU.paginaMineduc);
@@ -1076,7 +1076,7 @@ function htmlFormEstablecimiento(form) {
   return `<div class="tarjeta">
       <h3>${esEditar ? "Editar establecimiento" : "Nuevo establecimiento"}</h3>
       <div class="grid-2">
-        <div class="campo"><label>RBD (solo números, hasta 6)</label><input id="dirf-codigo" value="${esc(form.codigo || "")}" placeholder="Ej: 17791" inputmode="numeric" maxlength="6" autocomplete="off"></div>
+        <div class="campo"><label>RBD (solo nÃºmeros, hasta 6)</label><input id="dirf-codigo" value="${esc(form.codigo || "")}" placeholder="Ej: 17791" inputmode="numeric" maxlength="6" autocomplete="off"></div>
         <div class="campo"><label>Nombre</label><input id="dirf-nombre" value="${esc(form.nombre || "")}"></div>
         <div class="campo"><label>Dependencia</label>
           <select id="dirf-dep">${deps.map((d) => `<option value="${esc(d)}" ${d === form.dependencia ? "selected" : ""}>${esc(d)}</option>`).join("")}</select></div>
@@ -1288,7 +1288,7 @@ async function panelAdminUsuarios() {
       b.onclick = async () => {
         const fila = b.closest("tr");
         const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
-        const si = await confirmarMensaje(`¿Eliminar al usuario ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar usuario", "Eliminar", true);
+        const si = await confirmarMensaje(`Â¿Eliminar al usuario ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar usuario", "Eliminar", true);
         if (!si) return;
         try {
           await API.eliminarUsuario(b.dataset.elimUsr);
@@ -1415,14 +1415,14 @@ async function panelAdminActividades() {
           const subs = (c.subcategorias || []).join(" / ");
           return `<strong>${esc(c.nombre)}</strong>${subs ? ` <span class="muted">(${esc(subs)})</span>` : ""}`;
         })
-        .join(" · ");
+        .join(" Â· ");
     }
     return esc((a.divisiones || []).join(", ") || "-");
   };
 
   const actConvSeccion = act.map((a) => ({
     ...a,
-    seccionNombre: a.seccion && secPorId[a.seccion] ? secPorId[a.seccion].nombre : "Sin sección",
+    seccionNombre: a.seccion && secPorId[a.seccion] ? secPorId[a.seccion].nombre : "Sin secciÃ³n",
   }));
 
   const estadoAct = { q: "" };
@@ -1430,8 +1430,8 @@ async function panelAdminActividades() {
   contenido(
     `<div class="encabezado"><h2 class="pagina">Actividades</h2>
        <button class="btn btn-primario2" id="btn-nuevo-act">+ Nueva</button>
-       <button class="btn btn-mini" id="btn-nueva-area">+ Área</button>
-       <button class="btn btn-mini" id="btn-seccion-act">+ Sección</button></div>
+       <button class="btn btn-mini" id="btn-nueva-area">+ Ãrea</button>
+       <button class="btn btn-mini" id="btn-seccion-act">+ SecciÃ³n</button></div>
 
      <div class="act-buscador">
        <input id="buscador-acts" type="search" placeholder="Buscar actividad por nombre..." aria-label="Buscar actividad">
@@ -1480,7 +1480,7 @@ async function panelAdminActividades() {
       if (items.length) grupos.push({ seccion: s.nombre, items });
     });
     const libres = p.items.filter((a) => !a.seccion);
-    if (libres.length) grupos.push({ seccion: "Sin sección", items: libres });
+    if (libres.length) grupos.push({ seccion: "Sin secciÃ³n", items: libres });
 
     $("#act-lista").innerHTML = grupos.length
       ? grupos.map((g, gi) => `
@@ -1537,7 +1537,7 @@ async function panelAdminActividades() {
         const abierto = !det.classList.contains("oculta");
         det.classList.toggle("oculta", abierto);
         b.setAttribute("aria-expanded", String(!abierto));
-        b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+        b.querySelector(".act-chevron").textContent = abierto ? "â–¸" : "â–¾";
       };
     });
     document.querySelectorAll(".act-titulo").forEach((b) => {
@@ -1546,7 +1546,7 @@ async function panelAdminActividades() {
         const abierto = !det.classList.contains("oculta");
         det.classList.toggle("oculta", abierto);
         b.setAttribute("aria-expanded", String(!abierto));
-        b.querySelector(".act-chevron").textContent = abierto ? "▸" : "▾";
+        b.querySelector(".act-chevron").textContent = abierto ? "â–¸" : "â–¾";
       };
     });
     document.querySelectorAll("[data-editar-act]").forEach((b) => {
@@ -1595,7 +1595,7 @@ async function panelAdminActividades() {
   $("#btn-seccion-act").onclick = async () => {
     const nombre = prompt("Nombre de la nueva seccion:");
     if (!nombre) return;
-    const area = prompt("Area (Competitivo, Amistoso o Artístico Cultural):");
+    const area = prompt("Area (Competitivo, Amistoso o ArtÃ­stico Cultural):");
     try {
       await API.crearSeccion({ nombre, area });
       panelAdminActividades();
@@ -2175,7 +2175,7 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
           <button class="btn btn-mini btn-primario2 partido-asig" data-toggle-horario="${p._id}">Asignar Horario</button>
         </div>
         <p class="muted partido-asignado">${fechaVal(p.fecha)
-          ? `Fecha: ${esc(new Date(p.fecha).toLocaleDateString("es-CL"))} · Hora: ${esc(p.hora || "-")}${p.horaTermino ? ` a ${esc(p.horaTermino)}` : ""} · Lugar: ${esc(p.lugar && p.lugar !== "Por definir" ? p.lugar : "-")}`
+          ? `Fecha: ${esc(new Date(p.fecha).toLocaleDateString("es-CL"))} Â· Hora: ${esc(p.hora || "-")}${p.horaTermino ? ` a ${esc(p.horaTermino)}` : ""} Â· Lugar: ${esc(p.lugar && p.lugar !== "Por definir" ? p.lugar : "-")}`
           : "Sin horario asignado"}</p>
         <div class="horario-form oculta" data-horario-llave="${p._id}">
           <div class="grid-4">
@@ -2191,7 +2191,7 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
   const cuerpoPartidos = fasesOrden.length
     ? fasesOrden.map((fase) => `
         <div class="fase-bloque" data-fase="${esc(fase)}">
-          <h3 class="subtitulo-fase fase-toggle" data-toggle-fase="${esc(fase)}">${esc(fase)} <span class="fase-flecha">▸</span></h3>
+          <h3 class="subtitulo-fase fase-toggle" data-toggle-fase="${esc(fase)}">${esc(fase)} <span class="fase-flecha">â–¸</span></h3>
           <div class="fase-partidos" data-fase-partidos="${esc(fase)}">
             ${grupos[fase].map(tarjetaPartido).join("")}
           </div>
@@ -2215,7 +2215,7 @@ async function verPartidos(torneoId, nombreTorneo = "Partidos", formato = "amist
       const flecha = b.querySelector(".fase-flecha");
       if (cont) {
         cont.classList.toggle("oculta");
-        if (flecha) flecha.textContent = cont.classList.contains("oculta") ? "▾" : "▸";
+        if (flecha) flecha.textContent = cont.classList.contains("oculta") ? "â–¾" : "â–¸";
       }
     };
   });
@@ -2380,7 +2380,7 @@ async function panelAdminEquipos(torneoId) {
             <p class="muted" style="margin-top:10px">Tambien puede generar solo el bracket de eliminacion: todos los equipos clasifican y se arma 4 equipos hasta Semifinal, 8 hasta Cuartos de Final, 16 hasta Octavos de Final.</p>
             <div class="campo"><label>Modo de sorteo</label>
               <select id="br-modo">
-                <option value="desempeno">Desempeno (igualado: 1° con el ultimo)</option>
+                <option value="desempeno">Desempeno (igualado: 1Â° con el ultimo)</option>
                 <option value="azar">Al azar</option>
                 <option value="manual">Manual (elegir los enfrentamientos)</option>
               </select>
@@ -2575,7 +2575,7 @@ $("#btn-volver-equipos").onclick = () => panelAdminTorneos();
       }
       const eliminar = ev.target.closest("[data-elim-equipo]");
       if (eliminar) {
-        if (!await confirmarMensaje("¿Eliminar este equipo?")) return;
+        if (!await confirmarMensaje("Â¿Eliminar este equipo?")) return;
         try { await API.eliminarEquipo(torneoId, eliminar.dataset.elimEquipo); panelAdminEquipos(torneoId); }
         catch (err) { mostrarMensaje(err.message, "error"); }
       }
@@ -2820,7 +2820,7 @@ function asegurarOverlay() {
       <div class="mapa-mundo" id="mapa-mundo">
         <div class="mapa-lienzo" id="mapa-lienzo"></div>
       </div>
-      <div class="mapa-hint">Arrastra para desplazar · Girar: horizontal/vertical · Zoom: lupa o rueda (Ctrl)</div>
+      <div class="mapa-hint">Arrastra para desplazar Â· Girar: horizontal/vertical Â· Zoom: lupa o rueda (Ctrl)</div>
     </div>`;
   document.body.appendChild(ovl);
 
@@ -3194,7 +3194,7 @@ async function panelAdminSolicitudes() {
       if (!det) return;
       const abierto = !det.classList.contains("oculta");
       det.classList.toggle("oculta", abierto);
-      b.textContent = abierto ? "▼" : "▲";
+      b.textContent = abierto ? "â–¼" : "â–²";
     };
   });
   document.querySelectorAll("[data-ver-sol]").forEach((b) => {
@@ -3395,7 +3395,7 @@ async function panelAdminReportes() {
        ${htmlPaginacion("repPart", pPart)}
      </div>
      <div class="tarjeta"><h3>Trazabilidad Historica</h3>
-        <table><thead><tr><th>Año</th><th>Beneficiarios</th><th>Inscripciones</th></tr></thead>
+        <table><thead><tr><th>AÃ±o</th><th>Beneficiarios</th><th>Inscripciones</th></tr></thead>
         <tbody>${(hist.porAnio || []).length
           ? (hist.porAnio || []).map((a) => {
               const insc = (hist.inscripcionesPorAnio && hist.inscripcionesPorAnio[a.anio]) ? hist.inscripcionesPorAnio[a.anio].total : 0;
@@ -3504,9 +3504,9 @@ async function enlazarInscribirNuevo(alRefrescar) {
     const ape = $("#insn-ape").value.trim();
     const fecV = $("#insn-fec").value;
     const genero = $("#insn-gen").value;
-    if (!division) { mostrarMensaje("Seleccione la actividad y categoría.", "error"); return; }
+    if (!division) { mostrarMensaje("Seleccione la actividad y categorÃ­a.", "error"); return; }
     if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento.", "error"); return; }
-    // Validación de requisitos en el cliente antes de enviar la solicitud
+    // ValidaciÃ³n de requisitos en el cliente antes de enviar la solicitud
     const errorReq = validarRequisitosAlumnoFront(fecV, genero, division, null);
     if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
     try {
@@ -3548,7 +3548,7 @@ async function cargarCarteleraEn(sel) {
     if (vistos.has(clave)) continue;
     vistos.add(clave);
     const cant = alumnosNomina.filter((al) => al.actividad && al.actividad.nombre === a.nombre).length;
-    lista.push({ nombre: a.nombre, area: a.area, aceptados: cant });
+    if (cant > 0) lista.push({ nombre: a.nombre, area: a.area, aceptados: cant });
   }
 
   div.innerHTML = `<div class="grid-2 cartelera-f">
@@ -3576,13 +3576,33 @@ async function cargarCarteleraEn(sel) {
   if (cartArea) cartArea.onchange = () => { estadoCart.area = cartArea.value; reiniciarPaginaUI("cartelera"); renderCart(); };
   renderCart();
   itemsCart.addEventListener("click", (e) => {
+    const editBtn = e.target.closest("[data-edit-al]");
+    if (editBtn) {
+      e.stopPropagation();
+      const ok = confirm("Antes de editar la informacion del participante, se le hara llegar una notificacion al administrador DAEM. Desea continuar?");
+      if (!ok) return;
+      mostrarMensaje("Notificacion enviada al admin. Edicion en desarrollo.", "info");
+      return;
+    }
     const card = e.target.closest(".cart-act");
     if (!card) return;
     const nombre = card.dataset.cartAct;
     const delAct = alumnosNomina.filter((al) => al.actividad && al.actividad.nombre === nombre);
     if (!delAct.length) { mostrarMensaje("Sin estudiantes de tu nomina en esta actividad.", "info"); return; }
-    const txt = delAct.map((a, i) => `${i+1}. ${a.rut || ""} - ${a.nombre} (${a.division || "-"})`).join("\n");
-    alert(`Estudiantes de mi nomina en ${nombre}:\n\n${txt}`);
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;";
+    const cardEl = document.createElement("div");
+    cardEl.style.cssText = "background:#fff;border-radius:12px;padding:20px;max-width:700px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
+    cardEl.innerHTML = `<h3 style="margin-top:0">Estudiantes de mi nomina en ${nombre}</h3>
+      <table style="width:100%;border-collapse:collapse">
+        <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">RUT</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Nombre</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Division</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Accion</th></tr></thead>
+        <tbody>${delAct.map((a) => `<tr><td style="padding:6px">${a.rut}</td><td style="padding:6px">${a.nombre}</td><td style="padding:6px">${a.division || "-"}</td><td style="padding:6px"><button class="btn btn-mini" data-edit-al="${a._id}">Editar</button></td></tr>`).join("")}</tbody>
+      </table>
+      <div style="text-align:right;margin-top:14px"><button class="btn btn-mini" id="cerrar-modal-cart">Cerrar</button></div>`;
+    overlay.appendChild(cardEl);
+    document.body.appendChild(overlay);
+    cardEl.querySelector("#cerrar-modal-cart").onclick = () => overlay.remove();
+    overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
   });
   div.classList.remove("oculta");
 }
@@ -3641,7 +3661,7 @@ async function panelCoordLectores() {
     b.onclick = async () => {
       const fila = b.closest("tr");
       const nombre = fila ? fila.querySelectorAll("td")[1].textContent.trim() : "";
-      const si = await confirmarMensaje(`¿Eliminar al lector ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar lector", "Eliminar", true);
+      const si = await confirmarMensaje(`Â¿Eliminar al lector ${nombre ? `"${nombre}" ` : ""}? Esta accion no se puede deshacer.`, "Eliminar lector", "Eliminar", true);
       if (!si) return;
       try {
         await API.eliminarUsuario(b.dataset.elimEnc);
@@ -3761,7 +3781,7 @@ function tarjetaParticipacionHtml(d) {
   return `<div class="parti-tarjeta">
       <div class="parti-titulo"><strong>${esc(d.inscripcion.actividad ? d.inscripcion.actividad.nombre : "-")} / ${esc(d.inscripcion.division)}</strong>
       <span>Torneo: <em>${esc(t.nombre)}</em></span></div>
-      <p style="margin-top:4px">Marca quiénes quieren participar:</p>
+      <p style="margin-top:4px">Marca quiÃ©nes quieren participar:</p>
       <div class="parti-lista">${celdas}</div>
     </div>`;
 }
@@ -3931,7 +3951,7 @@ async function panelCoordTorneos() {
       const torneo = torneos.find((t) => String(t._id) === String(id));
       const reqTorneo = torneo ? (torneo.requisitos || null) : null;
       const division = torneo ? (torneo.division || "") : "";
-      // Validación de requisitos en el cliente antes de enviar la solicitud
+      // ValidaciÃ³n de requisitos en el cliente antes de enviar la solicitud
       const errorReq = validarRequisitosAlumnoFront(n.fechaNacimiento, n.genero, division, reqTorneo);
       if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
       try {
@@ -3979,21 +3999,21 @@ async function panelCoordSolicitudesImpl() {
 
   // Opciones de torneos para el selector
   const opcionesTorneos = torneosDisp.length
-    ? torneosDisp.map((t) => `<option value="${t._id}">${esc(t.nombre)} — ${esc(t.division || "Sin categoria")}</option>`).join("")
+    ? torneosDisp.map((t) => `<option value="${t._id}">${esc(t.nombre)} â€” ${esc(t.division || "Sin categoria")}</option>`).join("")
     : `<option value="">Sin torneos disponibles para postular</option>`;
 
   contenido(
     `<h2 class="pagina">Solicitudes y Estado</h2>
      <p class="muted">Solicite la inscripcion de un estudiante. El Admin DAEM debe aprobarla antes de que se agregue a la nomina.</p>
-     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">+ Añadir Inscripción</button></div>
+     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">+ AÃ±adir InscripciÃ³n</button></div>
      <div id="agregar-alumno-box" class="oculta tarjeta">
        <div class="seccion" style="margin-bottom:12px">
          <strong>Vincular solicitud a:</strong>&nbsp;&nbsp;
-         <label style="margin-right:16px"><input type="radio" name="al-destino" value="inscripcion" checked> Inscripción aceptada</label>
+         <label style="margin-right:16px"><input type="radio" name="al-destino" value="inscripcion" checked> InscripciÃ³n aceptada</label>
          <label><input type="radio" name="al-destino" value="torneo"> Torneo disponible</label>
        </div>
        <div id="al-bloque-inscripcion">
-         <div class="campo"><label>Inscripción (aceptada)</label>${comboHtml("al-ins-txt", "Buscar inscripcion...")}<input type="hidden" id="al-ins"></div>
+         <div class="campo"><label>InscripciÃ³n (aceptada)</label>${comboHtml("al-ins-txt", "Buscar inscripcion...")}<input type="hidden" id="al-ins"></div>
        </div>
        <div id="al-bloque-torneo" class="oculta">
          <div class="campo">
@@ -4005,7 +4025,7 @@ async function panelCoordSolicitudesImpl() {
        <div class="grid-2" style="margin-top:10px">
          <div class="campo"><label>RUT alumno</label><input id="al-rut"></div>
          <div class="campo"><label>Nombre completo</label><input id="al-nombre"></div>
-         <div class="campo"><label>Género</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
+         <div class="campo"><label>GÃ©nero</label><select id="al-genero"><option value="M">Masculino</option><option value="F">Femenino</option><option value="Otro">Otro</option></select></div>
          <div class="campo"><label>Fecha nacimiento</label><input type="date" id="al-fecha"></div>
        </div>
         <button class="btn btn-mini" id="btn-agregar-al-lote">+ Agregar a la lista</button>
@@ -4025,7 +4045,7 @@ async function panelCoordSolicitudesImpl() {
       if (!det) return;
       const abierto = !det.classList.contains("oculta");
       det.classList.toggle("oculta", abierto);
-      b.textContent = abierto ? "▼" : "▲";
+      b.textContent = abierto ? "â–¼" : "â–²";
     };
   });
   document.querySelectorAll("[data-ver-sol]").forEach((b) => {
@@ -4040,7 +4060,7 @@ async function panelCoordSolicitudesImpl() {
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
   initCombo("al-ins-txt", opAlIns, (o) => { $("#al-ins").value = o.valor; }, "Buscar inscripcion...");
 
-  // Mostrar/ocultar bloques según radio seleccionado
+  // Mostrar/ocultar bloques segÃºn radio seleccionado
   document.querySelectorAll("[name='al-destino']").forEach((r) => {
     r.addEventListener("change", () => {
       const esTorneo = document.querySelector("[name='al-destino']:checked")?.value === "torneo";
@@ -4060,8 +4080,8 @@ async function panelCoordSolicitudesImpl() {
       const req = t.requisitos || {};
       const partes = [];
       if (req.activo) {
-        if (req.edadMinima != null) partes.push(`Edad mínima: ${req.edadMinima} años`);
-        if (req.edadMaxima != null) partes.push(`Edad máxima: ${req.edadMaxima} años`);
+        if (req.edadMinima != null) partes.push(`Edad mÃ­nima: ${req.edadMinima} aÃ±os`);
+        if (req.edadMaxima != null) partes.push(`Edad mÃ¡xima: ${req.edadMaxima} aÃ±os`);
         if (req.genero) partes.push(`Solo ${req.genero}`);
       }
       const ap = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion).toLocaleDateString("es-CL") : null;
@@ -4072,7 +4092,7 @@ async function panelCoordSolicitudesImpl() {
     });
   }
 
-  // Envío del formulario
+  // EnvÃ­o del formulario
   let alumnosLote = [];
   const renderLote = () => {
     const cont = $("#al-lote-lista");
@@ -4114,7 +4134,7 @@ async function panelCoordSolicitudesImpl() {
         panelCoordSolicitudes();
       } catch (err) { mostrarMensaje(err.message, "error"); }
     } else {
-      if (!$("#al-ins").value) { mostrarMensaje("Seleccione una inscripción aceptada.", "error"); return; }
+      if (!$("#al-ins").value) { mostrarMensaje("Seleccione una inscripciÃ³n aceptada.", "error"); return; }
       try {
         const r = await API.solicitarEstudiante({ inscripcion: $("#al-ins").value, alumnos: alumnosLote });
         mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
@@ -4440,3 +4460,4 @@ function init() {
 }
 
 init();
+
