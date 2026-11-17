@@ -7,7 +7,7 @@ const esc = (txt = "") => String(txt).replace(/[&<>"']/g, (c) => ({ "&": "&amp;"
 
 // ---------- Parametros de campos: solo letras en nombres, formato RUT y limites ----------
 const MX = { letras: 60, nombre: 80, rut: 12, clave: 30, correo: 40, codigo: 12, telefono: 20 };
-const RE_LETRAS = /[^A-Za-zÃÃ‰ÃÃ“ÃšÃœÃ‘Ã¡Ã©Ã­Ã³ÃºÃ¼Ã±Â´.\- ]/g;
+const RE_LETRAS = /[^A-Za-zÁÉÍÓÚÜÑáéíóúüñ´.\- ]/g;
 const RE_RUT = /[^0-9kK]/g;
 
 // Formatea un RUT mientras se escribe: 22.113.000-6
@@ -4058,7 +4058,7 @@ async function panelCoordSolicitudesImpl() {
   contenido(
     `<h2 class="pagina">Solicitudes y Estado</h2>
      <p class="muted">Solicite la inscripcion de un estudiante. El Admin DAEM debe aprobarla antes de que se agregue a la nomina.</p>
-     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">+ AÃ±adir InscripciÃ³n</button></div>
+     <div class="seccion"><button class="btn btn-ok" id="btn-agregar-alumno">+ Añadir Inscripción</button></div>
      <div id="agregar-alumno-box" class="oculta tarjeta">
        <div class="seccion" style="margin-bottom:12px">
          <strong>Vincular solicitud a:</strong>&nbsp;&nbsp;
