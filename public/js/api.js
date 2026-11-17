@@ -1,4 +1,4 @@
-// ---------- Pantalla de carga (overlay) ----------
+﻿// ---------- Pantalla de carga (overlay) ----------
 let __cargandoNivel = 0;
 let __cargandoEl = null;
 function mostrarCargando(texto) {
@@ -7,7 +7,7 @@ function mostrarCargando(texto) {
   const ov = document.createElement("div");
   ov.id = "cargando-overlay";
   ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10002;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;pointer-events:auto;";
-  ov.innerHTML = `<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:cargando-spin 1s linear infinite;"></div><div style="color:#fff;font-size:16px;font-weight:600;">${(texto || "Procesando...")}</div>`;
+  ov.innerHTML = `<div style="background:#fff;border-radius:12px;padding:24px 32px;display:flex;flex-direction:column;align-items:center;gap:14px;box-shadow:0 10px 40px rgba(0,0,0,.3);"><div style="width:44px;height:44px;border:4px solid #ddd;border-top-color:#0d6efd;border-radius:50%;animation:cargando-spin 1s linear infinite;"></div><div style="color:#223049;font-size:16px;font-weight:600;">${(texto || "Procesando...")}</div></div>`;
   // inyectar keyframes si no existen
   if (!document.getElementById("cargando-style")) {
     const st = document.createElement("style");
@@ -280,3 +280,4 @@ const API = {
   async restaurarNotificacion(id) { return this.peticion("POST", `/api/notificaciones/${id}/restaurar`); },
   async restaurarTodasNotificaciones() { return this.peticion("POST", "/api/notificaciones/restaurar-todas"); },
 };
+
