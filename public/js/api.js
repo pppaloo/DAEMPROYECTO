@@ -1,3 +1,29 @@
+// ---------- Pantalla de carga (overlay) ----------
+let __cargandoNivel = 0;
+let __cargandoEl = null;
+function mostrarCargando(texto) {
+  __cargandoNivel++;
+  if (__cargandoEl) return;
+  const ov = document.createElement("div");
+  ov.id = "cargando-overlay";
+  ov.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.45);z-index:10002;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;pointer-events:auto;";
+  ov.innerHTML = `<div style="width:44px;height:44px;border:4px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:cargando-spin 1s linear infinite;"></div><div style="color:#fff;font-size:16px;font-weight:600;">${(texto || "Procesando...")}</div>`;
+  // inyectar keyframes si no existen
+  if (!document.getElementById("cargando-style")) {
+    const st = document.createElement("style");
+    st.id = "cargando-style";
+    st.textContent = "@keyframes cargando-spin { to { transform: rotate(360deg); } }";
+    document.head.appendChild(st);
+  }
+  document.body.appendChild(ov);
+  __cargandoEl = ov;
+}
+function ocultarCargando() {
+  __cargandoNivel = Math.max(0, __cargandoNivel - 1);
+  if (__cargandoNivel > 0) return;
+  if (__cargandoEl) { __cargandoEl.remove(); __cargandoEl = null; }
+}
+
 // Capa de acceso a la API REST del backend DAEM.
 // Maneja el token JWT y respuestas JSON consistentes ({error}) del servidor.
 
@@ -70,6 +96,9 @@ const API = {
   },
 
   async peticion(metodo, url, cuerpo) {
+    const esEscritura = !["GET", "HEAD", "OPTIONS"].includes(String(metodo).toUpperCase());
+    if (esEscritura) mostrarCargando("Procesando...");
+    try {
     const opciones = {
       method: metodo,
       headers: this.cabecera(cuerpo !== undefined),
@@ -96,6 +125,9 @@ const API = {
       throw err;
     }
     return data;
+    } finally {
+      if (esEscritura) ocultarCargando();
+    }
   },
 
   async login(rut, clave) {
