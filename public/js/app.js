@@ -849,11 +849,26 @@ function reiniciarPaginaUI(clave) {
 
 // Enlaza todos los botones de paginacion del panel con su funcion de recarga.
 function conectarPaginacion(recargar, raiz) {
-  (raiz || document).querySelectorAll("[data-pag]").forEach((b) => {
+  const root = raiz || document;
+  root.querySelectorAll("[data-pag]").forEach((b) => {
     b.onclick = () => {
       PAGINAS_UI[b.dataset.pag] = Number(b.dataset.pagina) || 1;
       recargar();
     };
+  });
+  // Mover las barras de paginacion arriba, debajo del buscador.
+  root.querySelectorAll(".paginacion").forEach((bar) => {
+    const parent = bar.parentElement;
+    if (!parent) return;
+    // Evitar duplicar si ya esta arriba.
+    if (parent.firstElementChild === bar) return;
+    // Insertar antes del primer hijo (o antes de la primera tabla).
+    const tabla = parent.querySelector("table, .tarjeta, .item-agenda, .cal-grid");
+    if (tabla && tabla !== bar && tabla.parentElement === parent) {
+      parent.insertBefore(bar, tabla);
+    } else {
+      parent.insertBefore(bar, parent.firstChild);
+    }
   });
 }
 
