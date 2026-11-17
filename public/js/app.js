@@ -3576,15 +3576,6 @@ async function cargarCarteleraEn(sel) {
   if (cartArea) cartArea.onchange = () => { estadoCart.area = cartArea.value; reiniciarPaginaUI("cartelera"); renderCart(); };
   renderCart();
   itemsCart.addEventListener("click", (e) => {
-    const editBtn = e.target.closest("[data-edit-al]");
-    if (editBtn) {
-      e.stopPropagation();
-      const ok = confirm("Antes de editar la informacion del participante, se le hara llegar una notificacion al administrador DAEM. Desea continuar?");
-      if (!ok) return;
-      const al = alumnosNomina.find((x) => String(x._id) === String(editBtn.dataset.editAl));
-      if (al) editarAlumnoModal(al);
-      return;
-    }
     const card = e.target.closest(".cart-act");
     if (!card) return;
     const nombre = card.dataset.cartAct;
@@ -3604,11 +3595,11 @@ async function cargarCarteleraEn(sel) {
     document.body.appendChild(overlay);
     cardEl.querySelector("#cerrar-modal-cart").onclick = () => overlay.remove();
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
-    cardEl.addEventListener("click", (e) => {
+    cardEl.addEventListener("click", async (e) => {
       const btn = e.target.closest("[data-edit-al]");
       if (!btn) return;
       e.stopPropagation();
-      const ok = confirm("Antes de editar la informacion del participante, se le hara llegar una notificacion al administrador DAEM. Desea continuar?");
+      const ok = await confirmarMensaje("Antes de editar la informacion del participante, se le hara llegar una notificacion al administrador DAEM. Desea continuar?", "Editar participante", "Continuar", false);
       if (!ok) return;
       const al = alumnosNomina.find((x) => String(x._id) === String(btn.dataset.editAl));
       if (al) editarAlumnoModal(al);
