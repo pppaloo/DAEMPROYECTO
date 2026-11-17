@@ -1517,7 +1517,7 @@ async function panelAdminActividades() {
                 <div class="act-campo"><span class="act-label">Recintos</span><span>${esc((a.recintos || []).join(", ") || "-")}</span></div>
                 <div class="act-campo"><span class="act-label">Estado</span><span>${esc(a.estado)}</span></div>
                 <div class="act-campo"><span class="act-label">Limite inscritos</span><span>${a.limiteInscritos ? a.limiteInscritos : "Sin limite"}</span></div>
-                ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} anios</span></div>` : ""}
+                ${(a.edadMinima || a.edadMaxima) ? `<div class="act-campo"><span class="act-label">Edad</span><span>${a.edadMinima ?? "?"}-${a.edadMaxima ?? "?"} años</span></div>` : ""}
               </div>
               <div class="act-desglose">
                 <h4 class="act-labdesg">Estudiantes por categoria</h4>
@@ -3500,7 +3500,7 @@ async function enlazarInscribirNuevo(alRefrescar) {
       let e = hoy.getFullYear() - nac.getFullYear();
       const m = hoy.getMonth() - nac.getMonth();
       if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
-      edad = `${e} anio(s)`;
+      edad = `${e} año(s)`;
     }
     const campo = $("#insn-edad");
     if (campo) campo.value = edad;
@@ -3627,7 +3627,7 @@ function bloqueTorneosInscripcionHtml(tor) {
     const inicio = t.fechaAperturaInscripcion ? new Date(t.fechaAperturaInscripcion) : null;
     const fin = t.fechaCierreInscripcion ? new Date(t.fechaCierreInscripcion) : null;
     const reqTxt = req.activo
-      ? `Edad ${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"} anios${req.genero ? ` | Solo ${req.genero}` : ""}`
+      ? `Edad ${req.edadMinima ?? "?"}-${req.edadMaxima ?? "?"} años${req.genero ? ` | Solo ${req.genero}` : ""}`
       : "Sin requisitos";
     return `<div class="tarjeta"><h3>${esc(t.nombre)} <span class="badge-rol">${esc(t.division || "")}</span></h3>
     <p class="muted">Actividad: ${esc(t.actividad ? t.actividad.nombre : "-")} | Categoria: ${esc(t.division || "Sin categoria")}</p>
@@ -3959,7 +3959,7 @@ async function panelCoordTorneos() {
     let edad = hoy.getFullYear() - nac.getFullYear();
     const m = hoy.getMonth() - nac.getMonth();
     if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
-    return Number.isFinite(edad) ? `${edad} anio(s)` : "";
+    return Number.isFinite(edad) ? `${edad} año(s)` : "";
   };
   document.querySelectorAll("[data-n-fec]").forEach((f) => {
     f.addEventListener("input", () => {
