@@ -1473,7 +1473,7 @@ async function panelAdminActividades() {
     const filtradas = q
       ? actConvSeccion.filter((a) => String(a.nombre || "").toLowerCase().includes(q))
       : actConvSeccion;
-    const p = paginarUI(filtradas, "actividades");
+    const p = paginarUI(filtradas, "actividades", 4);
     const grupos = [];
     secs.forEach((s) => {
       const items = p.items.filter((a) => String(a.seccion) === String(s._id));
@@ -3566,7 +3566,7 @@ async function cargarCarteleraEn(sel) {
       (!q || (a.nombre + " " + a.area).toLowerCase().includes(q)) &&
       (!ar || a.area === ar)
     );
-    const p = paginarUI(filtradas, "cartelera");
+    const p = paginarUI(filtradas, "cartelera", 4);
     itemsCart.innerHTML = filtradas.length
       ? p.items.map((a) => `<div class="tarjeta cart-act" data-cart-act="${esc(a.nombre)}" style="cursor:pointer"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3><p class="muted">Estudiantes de mi nomina: ${a.aceptados}</p></div>`).join("") + htmlPaginacion("cartelera", p)
       : "<p class='muted'>No hay actividades publicadas.</p>";
