@@ -858,11 +858,19 @@ function conectarPaginacion(recargar, raiz) {
   });
   // Mover las barras de paginacion arriba, debajo del buscador.
   root.querySelectorAll(".paginacion").forEach((bar) => {
+    const tarjeta = bar.closest(".tarjeta");
+    if (tarjeta && tarjeta.parentElement) {
+      // Si la barra esta dentro de una tarjeta, sacarla y ponerla justo antes.
+      if (bar.parentElement !== tarjeta.parentElement) {
+        tarjeta.parentElement.insertBefore(bar, tarjeta);
+      } else if (tarjeta.previousElementSibling !== bar) {
+        tarjeta.parentElement.insertBefore(bar, tarjeta);
+      }
+      return;
+    }
     const parent = bar.parentElement;
     if (!parent) return;
-    // Evitar duplicar si ya esta arriba.
     if (parent.firstElementChild === bar) return;
-    // Insertar antes del primer hijo (o antes de la primera tabla).
     const tabla = parent.querySelector("table, .tarjeta, .item-agenda, .cal-grid");
     if (tabla && tabla !== bar && tabla.parentElement === parent) {
       parent.insertBefore(bar, tabla);
