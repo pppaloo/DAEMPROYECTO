@@ -67,7 +67,24 @@ class AlumnoController {
     }
   }
 
-  // Registra asistencia de un alumno a un encuentro de su actividad.
+  // Actualiza los datos de un alumno (admin o coordinador de su establecimiento).
+  async actualizar(req, res) {
+    try {
+      const alumno = await this.#alumnos.obtenerPorId(req.params.id);
+      if (!alumno) return res.status(404).json({ error: "Alumno no encontrado" });
+      if (req.usuario.rol === "coordinador") {
+        if (String(alumno.establecimiento.id) !== String(req.usuario.establecimiento?._id)) {
+          return res.status(403).json({ error: "El estudiante no pertenece a su establecimiento" });
+        }
+      } else if (req.usuario.rol !== "admin") {
+        return res.status(403).json({ error: "Sin permisos" });
+      }
+      const actualizado = await this.#alumnos.actualizar(req.params.id, req.body);
+      res.json({ mensaje: "Estudiante actualizado", alumno: { ...actualizado, _id: actualizado.id } });
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
   async registrarAsistencia(req, res) {
     try {
       const { presente } = req.body;

@@ -10,6 +10,7 @@ const controller = new AlumnoController();
 // Gestion de alumnos y asistencia (Admin DAEM).
 router.use(autenticar);
 router.use(soloLecturaDireccion);
+router.put("/:id", autorizarRol("admin", "coordinador"), (req, res) => controller.actualizar(req, res));
 router.use(autorizarRol("admin"));
 
 router.get("/mios", (req, res) => controller.obtenerMios(req, res));

@@ -209,6 +209,7 @@ const API = {
   async solicitarEstudiante(datos) {
     return this.peticion("POST", "/api/solicitudes/estudiante", datos);
   },
+  async actualizarAlumno(id, datos) { return this.peticion("PUT", `/api/alumnos/${id}`, datos); },
   async responderSolicitud(id, estado, respuesta) {
     return this.peticion("PUT", `/api/solicitudes/${id}/estado`, { estado, respuesta });
   },
