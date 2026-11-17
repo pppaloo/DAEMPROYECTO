@@ -3532,7 +3532,8 @@ async function enlazarInscribirNuevo(alRefrescar) {
 async function cargarCarteleraEn(sel) {
   const div = $(sel);
   if (div.innerHTML) { div.classList.toggle("oculta"); return; }
-  const act = await API.actividades();
+  const [act, nomina] = await Promise.all([API.actividades(), API.nomina().catch(() => ({ alumnos: [] }))]);
+  const alumnosNomina = nomina.alumnos || [];
 
   // Cartelera solo informativa: lista de actividades disponibles,
   // generalizadas por nombre (la BD repite el mismo nombre en varias filas).
@@ -3546,7 +3547,8 @@ async function cargarCarteleraEn(sel) {
     const clave = String(a.nombre || "").toLowerCase();
     if (vistos.has(clave)) continue;
     vistos.add(clave);
-    lista.push({ nombre: a.nombre, area: a.area });
+    const cant = alumnosNomina.filter((al) => al.actividad && al.actividad.nombre === a.nombre).length;
+    lista.push({ nombre: a.nombre, area: a.area, aceptados: cant });
   }
 
   div.innerHTML = `<div class="grid-2 cartelera-f">
@@ -3566,13 +3568,22 @@ async function cargarCarteleraEn(sel) {
     );
     const p = paginarUI(filtradas, "cartelera");
     itemsCart.innerHTML = filtradas.length
-      ? p.items.map((a) => `<div class="tarjeta"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3></div>`).join("") + htmlPaginacion("cartelera", p)
+      ? p.items.map((a) => `<div class="tarjeta cart-act" data-cart-act="${esc(a.nombre)}" style="cursor:pointer"><h3>${esc(a.nombre)} <span class="badge-rol">${esc(a.area)}</span></h3><p class="muted">Estudiantes de mi nomina: ${a.aceptados}</p></div>`).join("") + htmlPaginacion("cartelera", p)
       : "<p class='muted'>No hay actividades publicadas.</p>";
     conectarPaginacion(renderCart, itemsCart);
   };
   if (cartBuscar) cartBuscar.oninput = () => { estadoCart.q = cartBuscar.value || ""; reiniciarPaginaUI("cartelera"); renderCart(); };
   if (cartArea) cartArea.onchange = () => { estadoCart.area = cartArea.value; reiniciarPaginaUI("cartelera"); renderCart(); };
   renderCart();
+  itemsCart.addEventListener("click", (e) => {
+    const card = e.target.closest(".cart-act");
+    if (!card) return;
+    const nombre = card.dataset.cartAct;
+    const delAct = alumnosNomina.filter((al) => al.actividad && al.actividad.nombre === nombre);
+    if (!delAct.length) { mostrarMensaje("Sin estudiantes de tu nomina en esta actividad.", "info"); return; }
+    const txt = delAct.map((a, i) => `${i+1}. ${a.rut || ""} - ${a.nombre} (${a.division || "-"})`).join("\n");
+    alert(`Estudiantes de mi nomina en ${nombre}:\n\n${txt}`);
+  });
   div.classList.remove("oculta");
 }
 
