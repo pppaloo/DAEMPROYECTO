@@ -3604,6 +3604,15 @@ async function cargarCarteleraEn(sel) {
     document.body.appendChild(overlay);
     cardEl.querySelector("#cerrar-modal-cart").onclick = () => overlay.remove();
     overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+    cardEl.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-edit-al]");
+      if (!btn) return;
+      e.stopPropagation();
+      const ok = confirm("Antes de editar la informacion del participante, se le hara llegar una notificacion al administrador DAEM. Desea continuar?");
+      if (!ok) return;
+      const al = alumnosNomina.find((x) => String(x._id) === String(btn.dataset.editAl));
+      if (al) editarAlumnoModal(al);
+    });
   });
   div.classList.remove("oculta");
 }
