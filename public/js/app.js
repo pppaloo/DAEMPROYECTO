@@ -2028,6 +2028,7 @@ async function panelAdminTorneos() {
       "finDia"
     );
     const edadMin = cont.querySelector(".pr-edad-min")?.value ? Number(cont.querySelector(".pr-edad-min").value) : null;
+    if (edadMin != null && edadMin < 3) { mostrarMensaje("La edad minima no puede ser menor a 3 años.", "error"); return; }
     const edadMax = cont.querySelector(".pr-edad-max")?.value ? Number(cont.querySelector(".pr-edad-max").value) : null;
 
     // Validaciones antes de guardar: mensajes claros de error.
@@ -2130,7 +2131,7 @@ function formProgramarTorneo(t) {
         </div>
       </div>
       <div class="grid-2 pr-req-box">
-        <div class="campo"><label>Edad minima</label><input type="number" class="pr-edad-min" min="0" value="${r.edadMinima ?? ""}"></div>
+        <div class="campo"><label>Edad minima</label><input type="number" class="pr-edad-min" min="3" value="${r.edadMinima ?? ""}"></div>
         <div class="campo"><label>Edad maxima</label><input type="number" class="pr-edad-max" min="0" value="${r.edadMaxima ?? ""}"></div>
         <div class="campo"><label>Genero permitido</label><select class="pr-genero">${selGenero()}</select></div>
       </div>
@@ -4000,6 +4001,8 @@ async function panelCoordTorneos() {
       const id = b.dataset.postNuevo;
       const n = obtenerNuevo(id);
       if (!n.rut || !n.nombre || !n.fechaNacimiento) { mostrarMensaje("Complete RUT, Nombres y Fecha de nacimiento.", "error"); return; }
+      const _edadN = (function(f){const n=new Date(f),h=new Date();let e=h.getFullYear()-n.getFullYear();const m=h.getMonth()-n.getMonth();if(m<0||(m===0&&h.getDate()<n.getDate()))e--;return e;})(n.fechaNacimiento);
+      if (_edadN < 3) { mostrarMensaje("El estudiante debe tener al menos 3 años.", "error"); return; }
       // Buscar el torneo correspondiente para obtener sus requisitos
       const torneo = torneos.find((t) => String(t._id) === String(id));
       const reqTorneo = torneo ? (torneo.requisitos || null) : null;
@@ -4164,6 +4167,10 @@ async function panelCoordSolicitudesImpl() {
     const genero = $("#al-genero").value;
     const fecha = $("#al-fecha").value;
     if (!rut || !nombre) { mostrarMensaje("Complete al menos RUT y Nombre del alumno.", "error"); return; }
+    if (fecha) {
+      const nac = new Date(fecha); const hoy = new Date(); let edad = hoy.getFullYear() - nac.getFullYear(); const m = hoy.getMonth() - nac.getMonth(); if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) edad--;
+      if (edad < 3) { mostrarMensaje("El estudiante debe tener al menos 3 años.", "error"); return; }
+    }
     if (destino === "torneo" && !fecha) { mostrarMensaje("Ingrese la fecha de nacimiento del alumno.", "error"); return; }
     alumnosLote.push({ rut, nombre, genero, fechaNacimiento: fecha, apoderado: "", email: "", telefono: "" });
     $("#al-rut").value = ""; $("#al-nombre").value = ""; $("#al-fecha").value = "";
