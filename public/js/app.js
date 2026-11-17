@@ -429,7 +429,6 @@ const MenuPorRol = {
     { clave: "coordTorneos", label: "Postular Torneos" },
     { clave: "coordSolicitudes", label: "Mis Solicitudes" },
     { clave: "feriados", label: "Feriados" },
-    { clave: "directorio", label: "Establecimientos" },
   ],
   lector: [
     { clave: "lectorResumen", label: "Resumen" },
@@ -1865,7 +1864,7 @@ async function panelAdminTorneos() {
     const filtrados = q
       ? tor.filter((t) => String(t.nombre || "").toLowerCase().includes(q))
       : tor;
-    const p = paginarUI(filtrados, "torneos");
+    const p = paginarUI(filtrados, "torneos", 4);
     const runLabel = {
       activo: "Activo", en_curso: "En curso", inscripciones: "Inscripciones",
       pausado: "Pausado", postergado: "Postergado", suspendido: "Suspendido",
@@ -3793,7 +3792,7 @@ async function panelCoordTorneos() {
   let torneosFiltrados = torneos;
   if (FILTRO_FORMATO_TOR) torneosFiltrados = torneosFiltrados.filter((t) => (t.formato || "amistoso") === FILTRO_FORMATO_TOR);
   if (FILTRO_AREA_TOR) torneosFiltrados = torneosFiltrados.filter((t) => (t.actividad && t.actividad.area) === FILTRO_AREA_TOR);
-  const pTorneos = paginarUI(torneosFiltrados, "coordTorneos");
+  const pTorneos = paginarUI(torneosFiltrados, "coordTorneos", 4);
 
   const tarjetaTorneo = (t) => {
     const actId = t.actividad ? String(t.actividad._id || t.actividad) : "";
@@ -4252,7 +4251,7 @@ async function panelLectorResumen() {
       : `<span class="estado">${esc(est)}</span>`;
 
   const torneosVigentes = tor.filter((t) => ["activo", "en_curso", "inscripciones"].includes(t.estado));
-  const pTor = paginarUI(torneosVigentes, "lectorTor");
+  const pTor = paginarUI(torneosVigentes, "lectorTor", 4);
   const pAct = paginarUI(act, "lectorAct");
 
   contenido(
