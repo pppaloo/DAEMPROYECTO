@@ -169,9 +169,17 @@ function mostrarMensaje(texto, tipo) {
   el.className = "tostada tostada-" + tipo;
   el.setAttribute("role", tipo === "error" ? "alert" : "status");
   el.innerHTML = `<span>${esc(msg)}</span><button type="button" aria-label="Cerrar">&times;</button>`;
-  el.querySelector("button").onclick = () => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); };
+  const cerrar = () => {
+    el.style.opacity = "0";
+    setTimeout(() => {
+      el.remove();
+      if (!cont.children.length) cont.style.background = "transparent";
+    }, 200);
+  };
+  el.querySelector("button").onclick = cerrar;
   cont.appendChild(el);
-  setTimeout(() => { el.style.opacity = "0"; setTimeout(() => el.remove(), 200); }, 4200);
+  cont.style.background = "rgba(0,0,0,0.35)";
+  setTimeout(cerrar, 4200);
 }
 
 // ---------- Modal de confirmacion (reemplaza a confirm) ----------
