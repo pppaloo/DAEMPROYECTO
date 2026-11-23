@@ -397,7 +397,15 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
 }
 .tabla-desglose tr.act-fila-tot td { border-bottom: none; padding-top: 8px; }
 /* ---------- Secciones expandibles (admin actividades) ---------- */
-.sec-tarjeta {
+.sec-desg {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-top: 8px;
+}
+@media (max-width: 1200px) { .sec-desg { grid-template-columns: repeat(3, 1fr); } }
+@media (max-width: 768px) { .sec-desg { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 480px) { .sec-desg { grid-template-columns: 1fr; } }
   padding: 8px 12px 10px;
   background: #e9eef8;
   border: 1px solid #c5d0e6;
