@@ -1,0 +1,11 @@
+require("dotenv").config();
+const UsuarioRepository = require("../repositories/UsuarioRepository");
+const EstablecimientoRepository = require("../repositories/EstablecimientoRepository");
+const u = new UsuarioRepository();
+const e = new EstablecimientoRepository();
+const est = e.obtenerPorCodigo("4160");
+console.log("est", est && est.id);
+const todos = u.obtenerTodos();
+const coords = todos.filter(x => x.rol === "coordinador");
+console.log("coords est:", coords.map(x => ({ rut: x.rut, est: x.establecimiento })));
+console.log("match:", coords.find(x => String(x.establecimiento && (x.establecimiento.id ?? x.establecimiento._id ?? x.establecimiento)) === String(est.id)));
