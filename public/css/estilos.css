@@ -14,6 +14,9 @@
   --burdeo: #910a25;
 }
 
+.cal-celda.con-evento { background: #f0af4d !important; color: #5c0717 !important; font-weight: 700 !important; }
+.cal-celda.con-evento .punto-torneo { background: #910a25 !important; }
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
