@@ -431,7 +431,7 @@ h2.pagina { color: var(--primario); margin-bottom: 16px; }
 .cal-celda:hover { background: rgba(255,255,255,0.18); }
 .cal-celda.vacio { background: transparent; cursor: default; }
 .cal-celda.hoy { background: var(--burdeo); border: 2px solid #fff; font-weight: 800; }
-.cal-celda.con-evento { background: #f0af4d; color: #5c0717; font-weight: 700; }
+.cal-celda.con-evento { background: #f0af4d !important; color: #5c0717 !important; font-weight: 700 !important; }
 .cal-celda.con-evento .punto-torneo { background: #910a25; }
 .cal-num { font-size: 13px; }
 .punto-torneo {
