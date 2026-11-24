@@ -4205,8 +4205,12 @@ async function panelCoordTorneos() {
       (a.torneos || []).some((x) => String(x._id || x) === String(t._id))
     );
     const candidatos = alumnos.filter((a) => {
-      if (a.actividad && String(a.actividad._id || a.actividad) !== actId) return false;
-      if (a.division !== division) return false;
+      if (a.actividad) {
+        const mismoId = String(a.actividad._id || a.actividad) === actId;
+        const mismoNombre = String(a.actividad.nombre || "").trim().toLowerCase() === String(actNombre || "").trim().toLowerCase();
+        if (!mismoId && !mismoNombre) return false;
+      }
+      if (String(a.division || "").trim().toLowerCase() !== String(division || "").trim().toLowerCase()) return false;
       return !(a.torneos || []).some((x) => String(x._id || x) === String(t._id));
     });
 

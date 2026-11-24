@@ -185,16 +185,19 @@ class InscripcionService {
   #torneoCorrespondiente(inscripcion) {
     const bd = obtenerConexion();
     const actId = inscripcion.actividad && (inscripcion.actividad.id ?? inscripcion.actividad);
+    const actNombre = (inscripcion.actividad && inscripcion.actividad.nombre) || "";
     return bd
       .prepare(
         `SELECT t.id, t.nombre, t.estado, t.formato, t.division,
                 t.fechaAperturaInscripcion, t.fechaCierreInscripcion, t.requisitos
          FROM torneos t
-         WHERE t.actividad = ? AND t.division = ?
+         JOIN actividades ac ON ac.id = t.actividad
+         WHERE (t.actividad = ? OR LOWER(TRIM(ac.nombre)) = LOWER(TRIM(?)))
+           AND LOWER(TRIM(t.division)) = LOWER(TRIM(?))
            AND t.estado NOT IN ('suspendido','cancelado','finalizado')
          ORDER BY t.id DESC`
       )
-      .all(actId, inscripcion.division);
+      .all(actId ?? -1, actNombre, inscripcion.division || "");
   }
 
   // Si el torneo admite postulaciones ahora mismo, y por que no.
@@ -473,6 +476,19 @@ class InscripcionService {
       alumnos: [...inscripcion.alumnos.map((a) => a.id), doc.id],
     });
 
+    // Vincular automaticamente al estudiante (y la inscripcion) con los torneos activos de esa actividad/categoria
+    const torneosCorresp = this.#torneoCorrespondiente(inscripcion);
+    if (torneosCorresp.length) {
+      const bd = obtenerConexion();
+      const insVinc = bd.prepare(`INSERT OR IGNORE INTO alumno_torneos (alumno, torneo) VALUES (?, ?)`);
+      for (const t of torneosCorresp) {
+        insVinc.run(doc.id, t.id);
+      }
+      if (!inscripcion.torneo) {
+        bd.prepare(`UPDATE inscripciones SET torneo = ? WHERE id = ? AND torneo IS NULL`).run(torneosCorresp[0].id, inscripcion.id);
+      }
+    }
+
     return conId(this.#alumnos.obtenerPorId(doc.id));
   }
 
@@ -557,7 +573,10 @@ class InscripcionService {
         throw new Error("El estudiante no pertenece a su establecimiento");
       }
       const actAlumno = existente.actividad && (existente.actividad.id != null ? existente.actividad.id : existente.actividad);
-      if (String(actAlumno) !== String(actId) || existente.division !== division) {
+      const actNombreAlumno = String((existente.actividad && existente.actividad.nombre) || "").trim().toLowerCase();
+      const actNombreTorneo = String(torneo.actividadNombre || (torneo.actividad && torneo.actividad.nombre) || "").trim().toLowerCase();
+      const mismaAct = String(actAlumno) === String(actId) || (actNombreAlumno && actNombreTorneo && actNombreAlumno === actNombreTorneo);
+      if (!mismaAct || String(existente.division || "").trim().toLowerCase() !== String(division || "").trim().toLowerCase()) {
         throw new Error("El estudiante pertenece a otra actividad/categoria: postule uno de la nomina de este torneo o registrelo como nuevo");
       }
       alumno = conId(existente);

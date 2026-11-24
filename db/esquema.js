@@ -547,6 +547,39 @@ function aplicarMigraciones(bd) {
       bd.prepare(`DELETE FROM inscripciones WHERE id = ?`).run(ins.id);
     }
   }
+
+  // Vincular inscripciones aceptadas y sus alumnos a los torneos activos de la misma actividad y categoria
+  const torneosActivos = bd
+    .prepare(
+      `SELECT t.id, t.actividad, t.division, ac.nombre AS actNombre
+       FROM torneos t
+       JOIN actividades ac ON ac.id = t.actividad
+       WHERE t.estado NOT IN ('suspendido','cancelado','finalizado')`
+    )
+    .all();
+  for (const t of torneosActivos) {
+    const div = String(t.division || "").trim();
+    bd.prepare(
+      `UPDATE inscripciones
+       SET torneo = ?
+       WHERE torneo IS NULL
+         AND estado = 'aceptada'
+         AND (? = '' OR LOWER(TRIM(division)) = LOWER(TRIM(?)))
+         AND actividad IN (
+           SELECT id FROM actividades WHERE id = ? OR LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+         )`
+    ).run(t.id, div, div, t.actividad, t.actNombre);
+    bd.prepare(
+      `INSERT OR IGNORE INTO alumno_torneos (alumno, torneo)
+       SELECT a.id, ?
+       FROM alumnos a
+       JOIN actividades ac ON ac.id = a.actividad
+       LEFT JOIN inscripciones i ON i.id = a.inscripcion
+       WHERE (a.actividad = ? OR LOWER(TRIM(ac.nombre)) = LOWER(TRIM(?)))
+         AND (? = '' OR LOWER(TRIM(a.division)) = LOWER(TRIM(?)))
+         AND (a.inscripcion IS NULL OR i.estado = 'aceptada')`
+    ).run(t.id, t.actividad, t.actNombre, div, div);
+  }
 }
 
 function crearEsquema() {

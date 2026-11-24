@@ -37,15 +37,40 @@ class EquipoService {
   }
 
   // Pool de estudiantes disponibles: los de inscripciones aceptadas del
-  // torneo que aun no estan asignados a ningun equipo. Incluye tanto las
-  // inscripciones completas asociadas al torneo como los estudiantes
-  // postulados individualmente (alumno.torneos).
+  // torneo que aun no estan asignados a ningun equipo. Incluye las
+  // inscripciones asociadas al torneo, los estudiantes postulados
+  // individualmente (alumno.torneos) y los estudiantes de la nomina
+  // inscrita en la misma actividad y categoria/division del torneo.
   async obtenerPool(torneoId) {
+    const torneo = await this.#torneos.obtenerPorId(torneoId);
     const inscripciones = await this.#inscripciones.obtenerTodos({
       torneo: torneoId,
       estado: "aceptada",
     });
     const directos = await this.#alumnos.obtenerTodos({ torneos: torneoId });
+
+    // Incluir tambien estudiantes de la nomina (inscripciones aceptadas) que
+    // corresponden a la misma actividad (por ID o nombre) y categoria del torneo.
+    let deNominaCategoria = [];
+    if (torneo) {
+      const bd = obtenerConexion();
+      const actId = torneo.actividad && (torneo.actividad.id ?? torneo.actividad);
+      const actNombre = torneo.actividadNombre || (torneo.actividad && torneo.actividad.nombre) || "";
+      const division = String(torneo.division || "").trim();
+      if (actId || actNombre) {
+        deNominaCategoria = bd
+          .prepare(
+            `SELECT DISTINCT a.id
+             FROM alumnos a
+             JOIN actividades ac ON ac.id = a.actividad
+             LEFT JOIN inscripciones i ON i.id = a.inscripcion
+             WHERE (a.actividad = ? OR LOWER(TRIM(ac.nombre)) = LOWER(TRIM(?)))
+               AND (? = '' OR LOWER(TRIM(a.division)) = LOWER(TRIM(?)))
+               AND (a.inscripcion IS NULL OR i.estado = 'aceptada')`
+          )
+          .all(actId ?? -1, actNombre, division, division);
+      }
+    }
 
     const asignados = await this.#equipos.obtenerPorTorneo(torneoId);
     const usados = new Set();
@@ -62,6 +87,9 @@ class EquipoService {
     directos.forEach(agregar);
     for (const insc of inscripciones) {
       for (const a of insc.alumnos || []) agregar(a);
+    }
+    for (const a of deNominaCategoria) {
+      agregar(a);
     }
 
     return this.#enriquecerConEstablecimiento(alumnos);
