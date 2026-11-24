@@ -5,6 +5,7 @@ const TorneoRepository = require("../repositories/TorneoRepository");
 const InscripcionService = require("./InscripcionService");
 const Solicitud = require("../domain/Solicitud");
 const { TIPOS_SOLICITUD } = require("../constants/catalogos");
+const { extraerDatosNominaPdf, decodificarBufferPdf } = require("./PdfNominaParser");
 
 class SolicitudService {
   #solicitudes;
@@ -31,6 +32,37 @@ class SolicitudService {
     return this.#solicitudes.obtenerTodos();
   }
 
+  // Extrae los datos de estudiantes desde un archivo PDF de nómina.
+  async extraerNominaPdf(datos, usuario) {
+    if (!["coordinador", "admin"].includes(usuario.rol)) {
+      throw new Error("No autorizado");
+    }
+    if (!datos || !datos.archivoPdf) {
+      throw new Error("Debe adjuntar un archivo PDF");
+    }
+    return extraerDatosNominaPdf(datos.archivoPdf);
+  }
+
+  // Obtiene el archivo PDF adjunto de una solicitud para revisión/descarga.
+  async obtenerArchivo(id, usuario) {
+    const solicitud = await this.#solicitudes.obtenerPorId(id);
+    if (!solicitud) throw new Error("Solicitud no encontrada");
+    if (usuario.rol === "coordinador") {
+      const estId = usuario.establecimiento?.id ?? usuario.establecimiento?._id;
+      if (String(solicitud.establecimiento?.id) !== String(estId)) {
+        throw new Error("La solicitud no pertenece a su establecimiento");
+      }
+    }
+    if (!solicitud.archivoPdf) {
+      throw new Error("Esta solicitud no tiene un archivo PDF adjunto");
+    }
+    return {
+      archivoNombre: solicitud.archivoNombre || `nomina_solicitud_${solicitud.id}.pdf`,
+      archivoPdf: solicitud.archivoPdf,
+      buffer: decodificarBufferPdf(solicitud.archivoPdf),
+    };
+  }
+
   // El coordinador propone inscribir un estudiante. El estudiante NO se agrega
   // a la nomina hasta que el Admin DAEM apruebe la solicitud.
   async crearSolicitudEstudiante(datos, usuario) {
@@ -43,15 +75,25 @@ class SolicitudService {
       throw new Error("Solo puede solicitar inscripciones para su establecimiento");
     }
 
-    const alumnosInput = Array.isArray(datos.alumnos) && datos.alumnos.length
+    const archivoNombre = String(datos.archivoNombre || "").trim();
+    const archivoPdf = String(datos.archivoPdf || "").trim();
+
+    let alumnosInput = Array.isArray(datos.alumnos) && datos.alumnos.length
       ? datos.alumnos
-      : (datos.alumno ? [datos.alumno] : []);
-    if (!alumnosInput.length) throw new Error("Debe indicar al menos un estudiante");
+      : (datos.alumno && (datos.alumno.rut || datos.alumno.nombre) ? [datos.alumno] : []);
+
+    if (!alumnosInput.length && archivoPdf) {
+      const extraido = extraerDatosNominaPdf(archivoPdf);
+      if (extraido.alumnos && extraido.alumnos.length) {
+        alumnosInput = extraido.alumnos;
+      }
+    }
+    if (!alumnosInput.length) throw new Error("Debe indicar al menos un estudiante o subir una nómina PDF con datos válidos");
 
     // Validar cada alumno
     const alumnos = alumnosInput.map((al) => {
       const rut = String(al.rut || "").trim();
-      const nombre = String(al.nombre || "").trim();
+      const nombre = String(al.nombre || `${al.nombres || ""} ${al.apellidos || ""}`).trim();
       const fechaNacimiento = al.fechaNacimiento || "";
       if (!rut) throw new Error("El RUT del estudiante es obligatorio");
       if (!nombre) throw new Error("El nombre del estudiante es obligatorio");
@@ -59,7 +101,7 @@ class SolicitudService {
       return {
         rut,
         nombre,
-        genero: al.genero || "",
+        genero: al.genero || "M",
         fechaNacimiento,
         apoderado: al.apoderado || "",
         email: al.email || "",
@@ -129,6 +171,8 @@ class SolicitudService {
       torneo: torneoId,
       division,
       alumnos,
+      archivoNombre,
+      archivoPdf,
     });
   }
 

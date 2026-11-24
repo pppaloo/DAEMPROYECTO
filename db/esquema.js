@@ -290,6 +290,8 @@ const CREAR_TABLAS = [
     alumnoApoderado TEXT NOT NULL DEFAULT '',
     alumnoEmail TEXT NOT NULL DEFAULT '',
     alumnoTelefono TEXT NOT NULL DEFAULT '',
+    archivoNombre TEXT NOT NULL DEFAULT '',
+    archivoPdf TEXT NOT NULL DEFAULT '',
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
@@ -420,6 +422,8 @@ function aplicarMigraciones(bd) {
 
   // Codigo unico de lote para solicitudes (aparte del id numerico).
   agregarSiFalta("solicitudes", "codigo", "codigo TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "archivoNombre", "archivoNombre TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "archivoPdf", "archivoPdf TEXT NOT NULL DEFAULT ''");
   // Tabla de alumnos por solicitud (lote).
   bd.exec(`CREATE TABLE IF NOT EXISTS solicitud_alumnos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -499,6 +503,83 @@ function aplicarMigraciones(bd) {
   );
   bd.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_actividades_nombre_area_anio_seccion
     ON actividades (nombre, area, anio, seccion)`);
+
+  // Corregir inscripciones/solicitudes de "Para atletismo - SUB 14" creadas desde nómina de Atletismo
+  const actAtletismoSub14 = bd
+    .prepare(`SELECT id FROM actividades WHERE LOWER(nombre) = 'atletismo' AND divisiones LIKE '%SUB 14%' ORDER BY id ASC LIMIT 1`)
+    .get();
+  const actParaAtletismo = bd
+    .prepare(`SELECT id FROM actividades WHERE LOWER(nombre) = 'para atletismo' LIMIT 1`)
+    .get();
+  if (actAtletismoSub14 && actParaAtletismo) {
+    bd.prepare(
+      `UPDATE solicitudes
+       SET actividad = ?, detalle = REPLACE(detalle, 'Para atletismo', 'Atletismo')
+       WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+    bd.prepare(
+      `UPDATE OR IGNORE alumnos SET actividad = ? WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+    bd.prepare(
+      `UPDATE OR IGNORE inscripciones SET actividad = ? WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+  }
+
+  // Unificar inscripciones duplicadas del mismo establecimiento con el mismo nombre de actividad y división
+  const todasInsc = bd
+    .prepare(
+      `SELECT i.id, i.establecimiento, i.actividad, LOWER(TRIM(a.nombre)) AS actClave, LOWER(TRIM(i.division)) AS divClave
+       FROM inscripciones i
+       JOIN actividades a ON a.id = i.actividad
+       ORDER BY i.id ASC`
+    )
+    .all();
+  const canonicas = new Map();
+  for (const ins of todasInsc) {
+    const clave = `${ins.establecimiento}::${ins.actClave}::${ins.divClave}`;
+    if (!canonicas.has(clave)) {
+      canonicas.set(clave, ins);
+    } else {
+      const principal = canonicas.get(clave);
+      bd.prepare(`INSERT OR IGNORE INTO inscripcion_alumnos (inscripcion, alumno) SELECT ?, alumno FROM inscripcion_alumnos WHERE inscripcion = ?`).run(principal.id, ins.id);
+      bd.prepare(`UPDATE OR IGNORE alumnos SET inscripcion = ?, actividad = ? WHERE inscripcion = ?`).run(principal.id, principal.actividad, ins.id);
+      bd.prepare(`UPDATE solicitudes SET inscripcion = ?, actividad = ? WHERE inscripcion = ?`).run(principal.id, principal.actividad, ins.id);
+      bd.prepare(`DELETE FROM inscripciones WHERE id = ?`).run(ins.id);
+    }
+  }
+
+  // Vincular inscripciones aceptadas y sus alumnos a los torneos activos de la misma actividad y categoria
+  const torneosActivos = bd
+    .prepare(
+      `SELECT t.id, t.actividad, t.division, ac.nombre AS actNombre
+       FROM torneos t
+       JOIN actividades ac ON ac.id = t.actividad
+       WHERE t.estado NOT IN ('suspendido','cancelado','finalizado')`
+    )
+    .all();
+  for (const t of torneosActivos) {
+    const div = String(t.division || "").trim();
+    bd.prepare(
+      `UPDATE inscripciones
+       SET torneo = ?
+       WHERE torneo IS NULL
+         AND estado = 'aceptada'
+         AND (? = '' OR LOWER(TRIM(division)) = LOWER(TRIM(?)))
+         AND actividad IN (
+           SELECT id FROM actividades WHERE id = ? OR LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+         )`
+    ).run(t.id, div, div, t.actividad, t.actNombre);
+    bd.prepare(
+      `INSERT OR IGNORE INTO alumno_torneos (alumno, torneo)
+       SELECT a.id, ?
+       FROM alumnos a
+       JOIN actividades ac ON ac.id = a.actividad
+       LEFT JOIN inscripciones i ON i.id = a.inscripcion
+       WHERE (a.actividad = ? OR LOWER(TRIM(ac.nombre)) = LOWER(TRIM(?)))
+         AND (? = '' OR LOWER(TRIM(a.division)) = LOWER(TRIM(?)))
+         AND (a.inscripcion IS NULL OR i.estado = 'aceptada')`
+    ).run(t.id, t.actividad, t.actNombre, div, div);
+  }
 }
 
 function crearEsquema() {

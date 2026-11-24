@@ -84,7 +84,37 @@ class TorneoService {
       datos.formato || "amistoso"
     );
     const doc = await this.#torneos.crear(torneo);
+    this.#vincularNominaExistente(doc);
     return aTorneo(doc);
+  }
+
+  #vincularNominaExistente(torneoDoc) {
+    if (!torneoDoc || !torneoDoc.id) return;
+    const bd = obtenerConexion();
+    const actId = idActividad(torneoDoc);
+    const actNombre = torneoDoc.actividadNombre || (torneoDoc.actividad && torneoDoc.actividad.nombre) || "";
+    const division = String(torneoDoc.division || "").trim();
+    if (!actId && !actNombre) return;
+    bd.prepare(
+      `UPDATE inscripciones
+       SET torneo = ?
+       WHERE torneo IS NULL
+         AND estado = 'aceptada'
+         AND (? = '' OR LOWER(TRIM(division)) = LOWER(TRIM(?)))
+         AND actividad IN (
+           SELECT id FROM actividades WHERE id = ? OR LOWER(TRIM(nombre)) = LOWER(TRIM(?))
+         )`
+    ).run(torneoDoc.id, division, division, actId ?? -1, actNombre);
+    bd.prepare(
+      `INSERT OR IGNORE INTO alumno_torneos (alumno, torneo)
+       SELECT a.id, ?
+       FROM alumnos a
+       JOIN actividades ac ON ac.id = a.actividad
+       LEFT JOIN inscripciones i ON i.id = a.inscripcion
+       WHERE (a.actividad = ? OR LOWER(TRIM(ac.nombre)) = LOWER(TRIM(?)))
+         AND (? = '' OR LOWER(TRIM(a.division)) = LOWER(TRIM(?)))
+         AND (a.inscripcion IS NULL OR i.estado = 'aceptada')`
+    ).run(torneoDoc.id, actId ?? -1, actNombre, division, division);
   }
 
   async obtenerTodos(filtro = {}) {

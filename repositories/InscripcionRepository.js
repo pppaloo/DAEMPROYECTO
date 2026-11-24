@@ -158,12 +158,28 @@ class InscripcionRepository {
 
   buscar(establecimiento, actividad, division) {
     const bd = obtenerConexion();
-    const fila = bd
+    let fila = bd
       .prepare(
         `SELECT * FROM inscripciones
          WHERE establecimiento = ? AND actividad = ? AND division = ?`
       )
       .get(establecimiento, actividad, division);
+    // Si no existe con ese id de actividad pero ya existe una inscripción del establecimiento
+    // para una actividad con el mismo nombre y la misma categoría/división, reutilizarla para evitar duplicados.
+    if (!fila && actividad != null) {
+      fila = bd
+        .prepare(
+          `SELECT i.*
+           FROM inscripciones i
+           JOIN actividades a ON a.id = i.actividad
+           WHERE i.establecimiento = ?
+             AND LOWER(a.nombre) = LOWER((SELECT nombre FROM actividades WHERE id = ?))
+             AND LOWER(i.division) = LOWER(?)
+           ORDER BY i.id ASC
+           LIMIT 1`
+        )
+        .get(establecimiento, actividad, division || "");
+    }
     if (!fila) return null;
     return {
       id: fila.id,

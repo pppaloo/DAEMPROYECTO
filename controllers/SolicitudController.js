@@ -28,6 +28,33 @@ class SolicitudController {
     }
   }
 
+  async extraerNomina(req, res) {
+    try {
+      const resultado = await this.#service.extraerNominaPdf(req.body, req.usuario);
+      res.json(resultado);
+    } catch (error) {
+      res.status(400).json({ error: error.message });
+    }
+  }
+
+  async descargarArchivo(req, res) {
+    try {
+      const { archivoNombre, buffer } = await this.#service.obtenerArchivo(req.params.id, req.usuario);
+      const disp = req.query.inline === "1" ? "inline" : "attachment";
+      const nombreSeguro = String(archivoNombre || "nomina.pdf").replace(/["\r\n]/g, "_");
+      const low = nombreSeguro.toLowerCase();
+      let mime = "application/pdf";
+      if (low.endsWith(".xlsx")) mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+      else if (low.endsWith(".xls")) mime = "application/vnd.ms-excel";
+      else if (low.endsWith(".csv")) mime = "text/csv; charset=utf-8";
+      res.setHeader("Content-Type", mime);
+      res.setHeader("Content-Disposition", `${disp}; filename="${nombreSeguro}"`);
+      res.send(buffer);
+    } catch (error) {
+      res.status(404).json({ error: error.message });
+    }
+  }
+
   async cambiarEstado(req, res) {
     try {
       const solicitud = await this.#service.cambiarEstado(
