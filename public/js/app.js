@@ -267,15 +267,22 @@ function initCombo(id, opciones, onSelect, placeholder) {
   });
 }
 
-// Opciones combinadas "Actividad - Categoria": por cada actividad y cada division.
+// Opciones combinadas "Actividad - Categoria": por cada actividad y cada division,
+// sin duplicar combinaciones cuando la BD tiene dos filas con el mismo nombre y categoria.
 function opcionesActividadCategoria(act) {
   const out = [];
-  act.forEach((a) => {
+  const vistas = new Set();
+  const ordenadas = [...(act || [])].sort((a, b) => Number(a._id || a.id || 0) - Number(b._id || b.id || 0));
+  ordenadas.forEach((a) => {
     const divs = (a.divisiones && a.divisiones.length) ? a.divisiones : [""];
     divs.forEach((d) => {
+      const texto = d ? `${a.nombre} - ${d}` : a.nombre;
+      const clave = String(texto || "").trim().toLowerCase();
+      if (vistas.has(clave)) return;
+      vistas.add(clave);
       out.push({
         valor: String(a._id),
-        texto: d ? `${a.nombre} - ${d}` : a.nombre,
+        texto,
         extra: { actividad: String(a._id), division: d, nombre: a.nombre, area: a.area },
       });
     });
@@ -3709,16 +3716,33 @@ async function enlazarInscribirNuevo(alRefrescar) {
             }
             if ($("#insn-email")) $("#insn-email").value = primero.email || "";
 
-            // Autoseleccionar actividad/categoría si viene en el PDF y aún no se ha elegido
+            // Autoseleccionar actividad/categoría del sistema si viene en el archivo y aún no se ha elegido
             if (!$("#insn-div").value && (res.actividadSugerida || res.divisionSugerida)) {
-              const actSug = String(res.actividadSugerida || "").toLowerCase();
-              const divSug = String(res.divisionSugerida || "").toLowerCase();
-              const match = opcionesCombo.find((op) => {
-                const t = op.texto.toLowerCase();
-                if (actSug && divSug) return t.includes(actSug) && t.includes(divSug);
-                if (divSug) return t.includes(divSug);
-                return actSug ? t.includes(actSug) : false;
-              });
+              const norm = (s) => String(s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+              const actSugRaw = norm(res.actividadSugerida);
+              const divSug = norm(res.divisionSugerida);
+              // Si actSugRaw viene como "atletismo - sub 14", separar solo el nombre de la actividad ("atletismo")
+              const actNombreSolo = actSugRaw.split(/\s*-\s*/)[0].trim();
+
+              // 1) Coincidencia exacta por nombre de actividad del sistema + categoría del sistema
+              let match = opcionesCombo.find((op) =>
+                actNombreSolo && divSug &&
+                norm(op.extra.nombre) === actNombreSolo &&
+                norm(op.extra.division) === divSug
+              );
+              // 2) Coincidencia exacta del texto completo ("Actividad - Categoria")
+              if (!match && actSugRaw) {
+                match = opcionesCombo.find((op) => norm(op.texto) === actSugRaw);
+              }
+              // 3) Coincidencia exacta por nombre de actividad
+              if (!match && actNombreSolo) {
+                match = opcionesCombo.find((op) => norm(op.extra.nombre) === actNombreSolo);
+              }
+              // 4) Coincidencia exacta solo por categoría si no venía actividad
+              if (!match && !actNombreSolo && divSug) {
+                match = opcionesCombo.find((op) => norm(op.extra.division) === divSug);
+              }
+
               if (match) {
                 if ($("#insn-act-txt")) $("#insn-act-txt").value = match.texto;
                 if ($("#insn-act")) $("#insn-act").value = match.extra.actividad;

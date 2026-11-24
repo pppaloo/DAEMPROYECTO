@@ -503,6 +503,50 @@ function aplicarMigraciones(bd) {
   );
   bd.exec(`CREATE UNIQUE INDEX IF NOT EXISTS uq_actividades_nombre_area_anio_seccion
     ON actividades (nombre, area, anio, seccion)`);
+
+  // Corregir inscripciones/solicitudes de "Para atletismo - SUB 14" creadas desde nómina de Atletismo
+  const actAtletismoSub14 = bd
+    .prepare(`SELECT id FROM actividades WHERE LOWER(nombre) = 'atletismo' AND divisiones LIKE '%SUB 14%' ORDER BY id ASC LIMIT 1`)
+    .get();
+  const actParaAtletismo = bd
+    .prepare(`SELECT id FROM actividades WHERE LOWER(nombre) = 'para atletismo' LIMIT 1`)
+    .get();
+  if (actAtletismoSub14 && actParaAtletismo) {
+    bd.prepare(
+      `UPDATE solicitudes
+       SET actividad = ?, detalle = REPLACE(detalle, 'Para atletismo', 'Atletismo')
+       WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+    bd.prepare(
+      `UPDATE OR IGNORE alumnos SET actividad = ? WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+    bd.prepare(
+      `UPDATE OR IGNORE inscripciones SET actividad = ? WHERE actividad = ? AND division = 'SUB 14'`
+    ).run(actAtletismoSub14.id, actParaAtletismo.id);
+  }
+
+  // Unificar inscripciones duplicadas del mismo establecimiento con el mismo nombre de actividad y división
+  const todasInsc = bd
+    .prepare(
+      `SELECT i.id, i.establecimiento, i.actividad, LOWER(TRIM(a.nombre)) AS actClave, LOWER(TRIM(i.division)) AS divClave
+       FROM inscripciones i
+       JOIN actividades a ON a.id = i.actividad
+       ORDER BY i.id ASC`
+    )
+    .all();
+  const canonicas = new Map();
+  for (const ins of todasInsc) {
+    const clave = `${ins.establecimiento}::${ins.actClave}::${ins.divClave}`;
+    if (!canonicas.has(clave)) {
+      canonicas.set(clave, ins);
+    } else {
+      const principal = canonicas.get(clave);
+      bd.prepare(`INSERT OR IGNORE INTO inscripcion_alumnos (inscripcion, alumno) SELECT ?, alumno FROM inscripcion_alumnos WHERE inscripcion = ?`).run(principal.id, ins.id);
+      bd.prepare(`UPDATE OR IGNORE alumnos SET inscripcion = ?, actividad = ? WHERE inscripcion = ?`).run(principal.id, principal.actividad, ins.id);
+      bd.prepare(`UPDATE solicitudes SET inscripcion = ?, actividad = ? WHERE inscripcion = ?`).run(principal.id, principal.actividad, ins.id);
+      bd.prepare(`DELETE FROM inscripciones WHERE id = ?`).run(ins.id);
+    }
+  }
 }
 
 function crearEsquema() {
