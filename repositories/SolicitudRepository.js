@@ -19,6 +19,7 @@ const COLUMNAS_SOLICITUD = new Set([
   "actividad", "establecimiento", "respuesta", "inscripcion", "torneo",
   "division", "alumnoRut", "alumnoNombre", "alumnoGenero",
   "alumnoFechaNacimiento", "alumnoApoderado", "alumnoEmail", "alumnoTelefono",
+  "archivoNombre", "archivoPdf",
 ]);
 
 function aSolicitud(s) {
@@ -54,6 +55,9 @@ function aSolicitud(s) {
     inscripcion: s.inscripcion == null ? null : s.inscripcion,
     torneo: s.torneo == null ? null : s.torneo,
     division: s.division,
+    archivoNombre: s.archivoNombre || "",
+    archivoPdf: s.archivoPdf || "",
+    tieneArchivo: Boolean(s.archivoPdf),
     alumno: {
       rut: s.alumnoRut,
       nombre: s.alumnoNombre,
@@ -126,8 +130,8 @@ class SolicitudRepository {
           (codigo, tipo, detalle, estado, rutSolicitante, rutCoordinador, actividad,
            establecimiento, respuesta, inscripcion, torneo, division,
            alumnoRut, alumnoNombre, alumnoGenero, alumnoFechaNacimiento,
-           alumnoApoderado, alumnoEmail, alumnoTelefono)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+           alumnoApoderado, alumnoEmail, alumnoTelefono, archivoNombre, archivoPdf)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       )
       .run(
         codigo,
@@ -148,7 +152,9 @@ class SolicitudRepository {
         (solicitud.alumnos && solicitud.alumnos[0]?.fechaNacimiento) || solicitud.alumno?.fechaNacimiento || null,
         (solicitud.alumnos && solicitud.alumnos[0]?.apoderado) || solicitud.alumno?.apoderado || "",
         (solicitud.alumnos && solicitud.alumnos[0]?.email) || solicitud.alumno?.email || "",
-        (solicitud.alumnos && solicitud.alumnos[0]?.telefono) || solicitud.alumno?.telefono || ""
+        (solicitud.alumnos && solicitud.alumnos[0]?.telefono) || solicitud.alumno?.telefono || "",
+        solicitud.archivoNombre ?? "",
+        solicitud.archivoPdf ?? ""
       );
     const sid = r.lastInsertRowid;
     const alumnos = Array.isArray(solicitud.alumnos) ? solicitud.alumnos : (solicitud.alumno ? [solicitud.alumno] : []);

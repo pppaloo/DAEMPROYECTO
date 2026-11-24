@@ -18,6 +18,12 @@ router.get("/", autorizarRol("admin", "coordinador"), (req, res) =>
 router.post("/estudiante", autorizarRol("admin", "coordinador"), (req, res) =>
   controller.crearEstudiante(req, res)
 );
+router.post("/extraer-nomina", autorizarRol("admin", "coordinador"), (req, res) =>
+  controller.extraerNomina(req, res)
+);
+router.get("/:id/archivo", autorizarRol("admin", "coordinador", "lector"), (req, res) =>
+  controller.descargarArchivo(req, res)
+);
 router.put("/:id/estado", autorizarRol("admin", "coordinador"), (req, res) =>
   controller.cambiarEstado(req, res)
 );

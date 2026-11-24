@@ -27,7 +27,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "25mb" }));
 // Servir los estaticos sin cache: los cambios de JS/CSS/HTML deben reflejarse
 // de inmediato (el admin programa torneos y el coordinador los postula; un
 // app.js cacheado hacia que el mensaje de exito y las horas no se vieran).

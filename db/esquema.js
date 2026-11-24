@@ -290,6 +290,8 @@ const CREAR_TABLAS = [
     alumnoApoderado TEXT NOT NULL DEFAULT '',
     alumnoEmail TEXT NOT NULL DEFAULT '',
     alumnoTelefono TEXT NOT NULL DEFAULT '',
+    archivoNombre TEXT NOT NULL DEFAULT '',
+    archivoPdf TEXT NOT NULL DEFAULT '',
     createdAt TEXT NOT NULL DEFAULT (datetime('now')),
     updatedAt TEXT NOT NULL DEFAULT (datetime('now'))
   )`,
@@ -420,6 +422,8 @@ function aplicarMigraciones(bd) {
 
   // Codigo unico de lote para solicitudes (aparte del id numerico).
   agregarSiFalta("solicitudes", "codigo", "codigo TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "archivoNombre", "archivoNombre TEXT NOT NULL DEFAULT ''");
+  agregarSiFalta("solicitudes", "archivoPdf", "archivoPdf TEXT NOT NULL DEFAULT ''");
   // Tabla de alumnos por solicitud (lote).
   bd.exec(`CREATE TABLE IF NOT EXISTS solicitud_alumnos (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

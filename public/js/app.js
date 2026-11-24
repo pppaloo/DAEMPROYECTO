@@ -3119,12 +3119,31 @@ function tabsSolicitudesHtml(tab, pendientes, historial, scope) {
     </div>`;
 }
 
+function esArchivoExcelNomina(nombre, dataUrl) {
+  const n = String(nombre || "").toLowerCase();
+  if (n.endsWith(".xlsx") || n.endsWith(".xls") || n.endsWith(".csv")) return true;
+  const d = String(dataUrl || "").toLowerCase();
+  return d.includes("spreadsheetml") || d.includes("ms-excel") || d.includes("text/csv");
+}
+
 function filaSolicitudHtml(s, conAcciones) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
   const nAl = alumnos.length;
+  const tieneArchivo = Boolean(s.tieneArchivo || s.archivoPdf);
+  const esExcel = esArchivoExcelNomina(s.archivoNombre, s.archivoPdf);
+  const etiquetaTipoArchivo = esExcel ? "Excel" : "PDF";
   return `<tr>
     <td>${esc(s.tipo)}${s.codigo ? `<div class="muted">${esc(s.codigo)}</div>` : ""}</td>
-    <td>${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>${nAl > 1 ? ` <button class="btn btn-mini" data-ver-sol="${s._id}">Ver estudiantes</button>` : ""}${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}</td>
+    <td>
+      ${esc(s.detalle)} <span class="muted">(${nAl} estudiante${nAl === 1 ? "" : "s"})</span>
+      <div style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;align-items:center">
+        ${nAl >= 1 ? `<button class="btn btn-mini" data-ver-sol="${s._id}">Revisar nómina (${nAl})</button>` : ""}
+        ${tieneArchivo && !esExcel ? `<button class="btn btn-mini btn-primario2" data-ver-pdf-sol="${s._id}" title="${esc(s.archivoNombre || "nomina.pdf")}">Ver PDF</button>` : ""}
+        ${tieneArchivo ? `<button class="btn btn-mini" data-descargar-pdf="${s._id}" title="${esc(s.archivoNombre || "nomina")}">Descargar ${etiquetaTipoArchivo}</button>` : ""}
+      </div>
+      ${tieneArchivo && s.archivoNombre ? `<div class="muted" style="font-size:0.82em;margin-top:3px">Archivo: ${esc(s.archivoNombre)}</div>` : ""}
+      ${s.respuesta ? `<div class="muted">Respuesta: ${esc(s.respuesta)}</div>` : ""}
+    </td>
     <td>${esc(s.establecimiento ? `${s.establecimiento.codigo} - ${s.establecimiento.nombre}` : "-")}</td>
     <td>${esc(s.rutSolicitante || "-")}</td>
     <td>${esc(fechaSolicitud(s.createdAt))}</td>
@@ -3134,6 +3153,56 @@ function filaSolicitudHtml(s, conAcciones) {
       <button class="btn btn-err2 btn-mini" data-sol-acc="${s._id}" data-sol-est="rechazada">Rechazar</button>
     </td>` : ""}
   </tr>`;
+}
+
+function obtenerBlobUrlPdf(archivoPdf, archivoNombre = "") {
+  if (!archivoPdf) return null;
+  const str = String(archivoPdf).trim();
+  const base64 = str.includes(",") ? str.split(",").pop() : str;
+  const bin = atob(base64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const low = String(archivoNombre || "").toLowerCase();
+  let mime = "application/pdf";
+  if (low.endsWith(".xlsx")) mime = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  else if (low.endsWith(".xls")) mime = "application/vnd.ms-excel";
+  else if (low.endsWith(".csv")) mime = "text/csv;charset=utf-8";
+  const blob = new Blob([bytes], { type: mime });
+  return URL.createObjectURL(blob);
+}
+
+function descargarPdfSolicitud(s) {
+  if (!s || (!s.archivoPdf && !s.tieneArchivo)) {
+    mostrarMensaje("Esta solicitud no tiene un archivo adjunto.", "error");
+    return;
+  }
+  const url = obtenerBlobUrlPdf(s.archivoPdf, s.archivoNombre);
+  if (!url) {
+    mostrarMensaje("No se pudo preparar el archivo.", "error");
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = s.archivoNombre || `nomina_${s.codigo || s._id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+
+function enlazarAccionesArchivoSolicitudes() {
+  document.querySelectorAll("[data-descargar-pdf]").forEach((b) => {
+    b.onclick = () => {
+      const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.descargarPdf));
+      if (s) descargarPdfSolicitud(s);
+    };
+  });
+  document.querySelectorAll("[data-ver-pdf-sol]").forEach((b) => {
+    b.onclick = () => {
+      const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verPdfSol));
+      if (s) mostrarModalEstudiantes(s, true);
+    };
+  });
 }
 
 function tablaSolicitudesHtml(items, prefijo, conAcciones) {
@@ -3162,22 +3231,60 @@ function conectarTabsSolicitudes(scope, recargar) {
   });
 }
 
-function mostrarModalEstudiantes(s) {
+function mostrarModalEstudiantes(s, mostrarVisorPdf = false) {
   const alumnos = (s.alumnos && s.alumnos.length) ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
+  const tieneArchivo = Boolean(s.tieneArchivo || s.archivoPdf);
+  const esExcel = esArchivoExcelNomina(s.archivoNombre, s.archivoPdf);
+  const pdfBlobUrl = (tieneArchivo && !esExcel) ? obtenerBlobUrlPdf(s.archivoPdf, s.archivoNombre) : null;
   const overlay = document.createElement("div");
   overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:10001;display:flex;align-items:center;justify-content:center;padding:16px;";
   const card = document.createElement("div");
-  card.style.cssText = "background:#fff;border-radius:12px;padding:20px;max-width:640px;width:100%;max-height:80vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
-  card.innerHTML = `<h3 style="margin-top:0">Estudiantes de la solicitud ${esc(s.codigo || s._id)}</h3>
-    <table style="width:100%;border-collapse:collapse">
-      <thead><tr><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">RUT</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Nombre</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Genero</th><th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Fecha nac.</th></tr></thead>
-      <tbody>${alumnos.map((a) => `<tr><td style="padding:6px">${esc(a.rut)}</td><td style="padding:6px">${esc(a.nombre)}</td><td style="padding:6px">${esc(a.genero || "-")}</td><td style="padding:6px">${esc(a.fechaNacimiento || "-")}</td></tr>`).join("")}</tbody>
+  card.style.cssText = "background:#fff;border-radius:12px;padding:20px;max-width:860px;width:100%;max-height:88vh;overflow:auto;box-shadow:0 10px 40px rgba(0,0,0,.3);";
+  card.innerHTML = `<div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+      <h3 style="margin:0">Nómina de estudiantes — Solicitud ${esc(s.codigo || s._id)}</h3>
+      ${tieneArchivo && !esExcel ? `<div style="display:flex;gap:8px;align-items:center">
+        <button class="btn btn-mini" id="toggle-visor-pdf">${mostrarVisorPdf ? "Ocultar visor PDF" : "Ver PDF adjunto"}</button>
+      </div>` : ""}
+    </div>
+    <p class="muted" style="margin-top:0">${esc(s.detalle || "")}</p>
+    <table style="width:100%;border-collapse:collapse;font-size:0.92em">
+      <thead><tr>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">RUT</th>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Nombre</th>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Apoderado</th>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Género</th>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Fecha nac.</th>
+        <th style="text-align:left;padding:6px;border-bottom:1px solid #ddd">Email</th>
+      </tr></thead>
+      <tbody>${alumnos.map((a) => `<tr>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.rut)}</td>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.nombre)}</td>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.apoderado || "-")}</td>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.genero === "M" ? "Masculino" : (a.genero === "F" ? "Femenino" : (a.genero || "-")))}</td>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.fechaNacimiento || "-")}</td>
+        <td style="padding:6px;border-bottom:1px solid #f0f0f0">${esc(a.email || "-")}</td>
+      </tr>`).join("")}</tbody>
     </table>
+    ${pdfBlobUrl ? `<div id="contenedor-visor-pdf" class="${mostrarVisorPdf ? "" : "oculta"}" style="margin-top:14px">
+      <iframe src="${pdfBlobUrl}" style="width:100%;height:420px;border:1px solid #ccc;border-radius:8px" title="Visor Nómina PDF"></iframe>
+    </div>` : ""}
     <div style="text-align:right;margin-top:14px"><button class="btn btn-mini" id="cerrar-modal-est">Cerrar</button></div>`;
   overlay.appendChild(card);
   document.body.appendChild(overlay);
-  card.querySelector("#cerrar-modal-est").onclick = () => overlay.remove();
-  overlay.onclick = (e) => { if (e.target === overlay) overlay.remove(); };
+  const limpiarYCerrar = () => {
+    if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+    overlay.remove();
+  };
+  card.querySelector("#cerrar-modal-est").onclick = limpiarYCerrar;
+  overlay.onclick = (e) => { if (e.target === overlay) limpiarYCerrar(); };
+  const btnToggle = card.querySelector("#toggle-visor-pdf");
+  const contVisor = card.querySelector("#contenedor-visor-pdf");
+  if (btnToggle && contVisor) {
+    btnToggle.onclick = () => {
+      const oculto = contVisor.classList.toggle("oculta");
+      btnToggle.textContent = oculto ? "Ver PDF adjunto" : "Ocultar visor PDF";
+    };
+  }
 }
 
 async function panelAdminSolicitudes() {
@@ -3210,11 +3317,10 @@ async function panelAdminSolicitudes() {
     b.onclick = () => {
       const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
       if (!s) return;
-      const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
-      const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
       mostrarModalEstudiantes(s);
     };
   });
+  enlazarAccionesArchivoSolicitudes();
   document.querySelectorAll("[data-sol-acc]").forEach((b) => {
     b.onclick = async () => {
       const estado = b.dataset.solEst;
@@ -3477,8 +3583,13 @@ function formInscribirNuevoHtml() {
         <div class="campo"><label>Fecha nacimiento</label><input type="date" id="insn-fec"></div>
         <div class="campo"><label>Edad (automatica)</label><input id="insn-edad" readonly></div>
         <div class="campo"><label>Email</label><input id="insn-email" autocomplete="off"></div>
-        <div class="campo"><label>Telefono</label><input id="insn-tel" autocomplete="off"></div>
+        <div class="campo">
+          <label>Subir nómina (PDF o Excel)</label>
+          <input type="file" id="insn-archivo" accept=".pdf,.xlsx,.xls,.csv,application/pdf,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv" style="padding:6px">
+          <small id="insn-archivo-info" class="muted" style="display:block;margin-top:4px;font-size:0.82em">Suba un archivo PDF o Excel (.xlsx, .xls, .csv) con la nómina para autocompletar los datos y adjuntarlo para revisión/descarga.</small>
+        </div>
       </div>
+      <div id="insn-lote-pdf" class="oculta" style="margin:12px 0"></div>
       <button class="btn btn-ok" id="btn-guardar-insn">Enviar solicitud</button>
     </div>`;
 }
@@ -3488,24 +3599,154 @@ async function enlazarInscribirNuevo(alRefrescar) {
   if (!btn) return;
   btn.onclick = () => $("#form-ins-nuevo").classList.toggle("oculta");
   const act = await API.actividades().catch(() => []);
-  initCombo("insn-act-txt", opcionesActividadCategoria(act), (o) => {
+  const opcionesCombo = opcionesActividadCategoria(act);
+  initCombo("insn-act-txt", opcionesCombo, (o) => {
     $("#insn-act").value = o.extra.actividad;
     $("#insn-div").value = o.extra.division;
   }, "Buscar actividad y categoria...");
+
+  const calcularEdadTexto = (valorFec) => {
+    const nac = new Date(valorFec);
+    const hoy = new Date();
+    if (!valorFec || isNaN(nac)) return "";
+    let e = hoy.getFullYear() - nac.getFullYear();
+    const m = hoy.getMonth() - nac.getMonth();
+    if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
+    return `${e} año(s)`;
+  };
+
   const fec = $("#insn-fec");
   if (fec) fec.addEventListener("input", () => {
-    const nac = new Date(fec.value);
-    const hoy = new Date();
-    let edad = "";
-    if (fec.value && !isNaN(nac)) {
-      let e = hoy.getFullYear() - nac.getFullYear();
-      const m = hoy.getMonth() - nac.getMonth();
-      if (m < 0 || (m === 0 && hoy.getDate() < nac.getDate())) e--;
-      edad = `${e} año(s)`;
-    }
     const campo = $("#insn-edad");
-    if (campo) campo.value = edad;
+    if (campo) campo.value = calcularEdadTexto(fec.value);
   });
+
+  let archivoPdfAdjunto = { nombre: "", dataUrl: "" };
+  let alumnosExtraidosPdf = [];
+
+  const renderPreviewPdf = () => {
+    const cont = $("#insn-lote-pdf");
+    if (!cont) return;
+    if (!alumnosExtraidosPdf.length) {
+      cont.innerHTML = "";
+      cont.classList.add("oculta");
+      return;
+    }
+    cont.classList.remove("oculta");
+    cont.innerHTML = `<div style="border:1px solid var(--borde, #dce2ec);border-radius:8px;padding:10px;background:#f8fafd">
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:8px;flex-wrap:wrap">
+        <strong>Nómina detectada (${alumnosExtraidosPdf.length} estudiante${alumnosExtraidosPdf.length === 1 ? "" : "s"}): ${esc(archivoPdfAdjunto.nombre)}</strong>
+        <button type="button" class="btn btn-mini btn-err2" id="btn-limpiar-pdf-insn">Quitar archivo</button>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="tabla-desglose" style="width:100%;font-size:0.88em">
+          <thead><tr><th>RUT</th><th>Nombres</th><th>Apellidos</th><th>Apoderado</th><th>Género</th><th>Fecha nac.</th><th>Email</th><th></th></tr></thead>
+          <tbody>${alumnosExtraidosPdf.map((a, idx) => `<tr>
+            <td>${esc(a.rut)}</td>
+            <td>${esc(a.nombres || a.nombre)}</td>
+            <td>${esc(a.apellidos || "-")}</td>
+            <td>${esc(a.apoderado || "-")}</td>
+            <td>${esc(a.genero === "F" ? "Femenino" : "Masculino")}</td>
+            <td>${esc(a.fechaNacimiento || "-")}</td>
+            <td>${esc(a.email || "-")}</td>
+            <td><button type="button" class="btn btn-mini btn-err2" data-quitar-al-pdf="${idx}">Quitar</button></td>
+          </tr>`).join("")}</tbody>
+        </table>
+      </div>
+    </div>`;
+    const btnLimpiar = cont.querySelector("#btn-limpiar-pdf-insn");
+    if (btnLimpiar) {
+      btnLimpiar.onclick = () => {
+        archivoPdfAdjunto = { nombre: "", dataUrl: "" };
+        alumnosExtraidosPdf = [];
+        const inpFile = $("#insn-archivo");
+        if (inpFile) inpFile.value = "";
+        const info = $("#insn-archivo-info");
+        if (info) info.textContent = "Suba un archivo PDF con la nómina para autocompletar los datos y adjuntarlo para revisión/descarga.";
+        renderPreviewPdf();
+      };
+    }
+    cont.querySelectorAll("[data-quitar-al-pdf]").forEach((b) => {
+      b.onclick = () => {
+        alumnosExtraidosPdf.splice(Number(b.dataset.quitarAlPdf), 1);
+        renderPreviewPdf();
+      };
+    });
+  };
+
+  const inpArchivo = $("#insn-archivo");
+  if (inpArchivo) {
+    inpArchivo.addEventListener("change", () => {
+      const file = inpArchivo.files && inpArchivo.files[0];
+      const info = $("#insn-archivo-info");
+      if (!file) {
+        archivoPdfAdjunto = { nombre: "", dataUrl: "" };
+        alumnosExtraidosPdf = [];
+        renderPreviewPdf();
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = async () => {
+        const dataUrl = String(reader.result || "");
+        archivoPdfAdjunto = { nombre: file.name, dataUrl };
+        if (info) info.textContent = `Procesando nómina "${file.name}"...`;
+        try {
+          const res = await API.extraerNominaPdf({
+            archivoNombre: file.name,
+            archivoPdf: dataUrl,
+          });
+          alumnosExtraidosPdf = Array.isArray(res.alumnos) ? res.alumnos : [];
+          if (alumnosExtraidosPdf.length > 0) {
+            const primero = alumnosExtraidosPdf[0];
+            if ($("#insn-rut")) $("#insn-rut").value = primero.rut || "";
+            if ($("#insn-nom")) $("#insn-nom").value = primero.nombres || primero.nombre || "";
+            if ($("#insn-ape")) $("#insn-ape").value = primero.apellidos || "";
+            if ($("#insn-apo")) $("#insn-apo").value = primero.apoderado || "";
+            if ($("#insn-gen") && primero.genero) $("#insn-gen").value = primero.genero === "F" ? "F" : "M";
+            if ($("#insn-fec") && primero.fechaNacimiento) {
+              $("#insn-fec").value = primero.fechaNacimiento;
+              if ($("#insn-edad")) $("#insn-edad").value = calcularEdadTexto(primero.fechaNacimiento);
+            }
+            if ($("#insn-email")) $("#insn-email").value = primero.email || "";
+
+            // Autoseleccionar actividad/categoría si viene en el PDF y aún no se ha elegido
+            if (!$("#insn-div").value && (res.actividadSugerida || res.divisionSugerida)) {
+              const actSug = String(res.actividadSugerida || "").toLowerCase();
+              const divSug = String(res.divisionSugerida || "").toLowerCase();
+              const match = opcionesCombo.find((op) => {
+                const t = op.texto.toLowerCase();
+                if (actSug && divSug) return t.includes(actSug) && t.includes(divSug);
+                if (divSug) return t.includes(divSug);
+                return actSug ? t.includes(actSug) : false;
+              });
+              if (match) {
+                if ($("#insn-act-txt")) $("#insn-act-txt").value = match.texto;
+                if ($("#insn-act")) $("#insn-act").value = match.extra.actividad;
+                if ($("#insn-div")) $("#insn-div").value = match.extra.division;
+              }
+            }
+
+            if (info) {
+              info.textContent = `Archivo cargado: ${file.name} (${alumnosExtraidosPdf.length} estudiante${alumnosExtraidosPdf.length === 1 ? "" : "s"} extraído${alumnosExtraidosPdf.length === 1 ? "" : "s"} automáticamente).`;
+            }
+            renderPreviewPdf();
+            mostrarMensaje(`Se extrajeron ${alumnosExtraidosPdf.length} estudiante(s) de la nómina PDF.`, "ok");
+          } else {
+            if (info) {
+              info.textContent = `Archivo PDF adjuntado (${file.name}). Complete o verifique los campos del formulario para enviar.`;
+            }
+            renderPreviewPdf();
+            mostrarMensaje("Archivo PDF adjuntado. No se detectaron filas automáticas; puede completar los campos manualmente.", "info");
+          }
+        } catch (err) {
+          if (info) info.textContent = `Archivo adjuntado: ${file.name}`;
+          mostrarMensaje(err.message, "error");
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
   $("#btn-guardar-insn").onclick = async () => {
     const division = $("#insn-div").value;
     const rut = $("#insn-rut").value.trim();
@@ -3513,8 +3754,58 @@ async function enlazarInscribirNuevo(alRefrescar) {
     const ape = $("#insn-ape").value.trim();
     const fecV = $("#insn-fec").value;
     const genero = $("#insn-gen").value;
+    const apo = $("#insn-apo").value.trim();
+    const email = $("#insn-email").value.trim();
+
     if (!division) { mostrarMensaje("Seleccione la actividad y categoría.", "error"); return; }
-    if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento.", "error"); return; }
+
+    // Si se cargó una nómina PDF con múltiples estudiantes
+    if (alumnosExtraidosPdf.length > 1) {
+      // Si el usuario editó en el formulario al primer estudiante, sincronizarlo
+      if (rut && nom && fecV) {
+        alumnosExtraidosPdf[0] = {
+          ...alumnosExtraidosPdf[0],
+          rut,
+          nombres: nom,
+          apellidos: ape,
+          nombre: `${nom} ${ape}`.trim(),
+          apoderado: apo,
+          genero,
+          fechaNacimiento: fecV,
+          email,
+        };
+      }
+      for (const al of alumnosExtraidosPdf) {
+        if (!al.rut || !al.nombre || !al.fechaNacimiento) {
+          mostrarMensaje(`El estudiante ${al.nombre || al.rut || "de la nómina"} no tiene RUT, Nombre o Fecha de nacimiento completa.`, "error");
+          return;
+        }
+        const errAl = validarRequisitosAlumnoFront(al.fechaNacimiento, al.genero || "M", division, null);
+        if (errAl) { mostrarMensaje(`${al.nombre} (${al.rut}): ${errAl}`, "error"); return; }
+      }
+      try {
+        const r = await API.solicitarEstudiante({
+          actividad: $("#insn-act").value,
+          division,
+          alumnos: alumnosExtraidosPdf.map((a) => ({
+            rut: a.rut,
+            nombre: a.nombre || `${a.nombres || ""} ${a.apellidos || ""}`.trim(),
+            apoderado: a.apoderado || "",
+            genero: a.genero || "M",
+            fechaNacimiento: a.fechaNacimiento,
+            email: a.email || "",
+            telefono: "",
+          })),
+          archivoNombre: archivoPdfAdjunto.nombre,
+          archivoPdf: archivoPdfAdjunto.dataUrl,
+        });
+        mostrarMensaje(r.mensaje || "Solicitud con nómina PDF enviada al Admin DAEM", "ok");
+        alRefrescar();
+      } catch (err) { mostrarMensaje(err.message, "error"); }
+      return;
+    }
+
+    if (!rut || !nom || !fecV) { mostrarMensaje("Complete al menos RUT, Nombres y Fecha de nacimiento (o suba una nómina PDF con estos datos).", "error"); return; }
     // Validación de requisitos en el cliente antes de enviar la solicitud
     const errorReq = validarRequisitosAlumnoFront(fecV, genero, division, null);
     if (errorReq) { mostrarMensaje(errorReq, "error"); return; }
@@ -3525,12 +3816,14 @@ async function enlazarInscribirNuevo(alRefrescar) {
         alumno: {
           rut,
           nombre: `${nom} ${ape}`.trim(),
-          apoderado: $("#insn-apo").value.trim(),
+          apoderado: apo,
           genero,
           fechaNacimiento: fecV,
-          email: $("#insn-email").value.trim(),
-          telefono: $("#insn-tel").value.trim(),
+          email,
+          telefono: "",
         },
+        archivoNombre: archivoPdfAdjunto.nombre,
+        archivoPdf: archivoPdfAdjunto.dataUrl,
       });
       mostrarMensaje(r.mensaje || "Solicitud enviada al Admin DAEM", "ok");
       alRefrescar();
@@ -4108,11 +4401,10 @@ async function panelCoordSolicitudesImpl() {
     b.onclick = () => {
       const s = (window.SOLICITUDES_CACHE || []).find((x) => String(x._id) === String(b.dataset.verSol));
       if (!s) return;
-      const alumnos = s.alumnos && s.alumnos.length ? s.alumnos : (s.alumno && s.alumno.rut ? [s.alumno] : []);
-      const txt = alumnos.map((a, i) => `${i + 1}. ${a.rut} - ${a.nombre} (${a.genero || "-"}) ${a.fechaNacimiento || ""}`).join("\\n");
       mostrarModalEstudiantes(s);
     };
   });
+  enlazarAccionesArchivoSolicitudes();
   $("#btn-agregar-alumno").onclick = () => $("#agregar-alumno-box").classList.toggle("oculta");
   initCombo("al-ins-txt", opAlIns, (o) => { $("#al-ins").value = o.valor; }, "Buscar inscripcion...");
 
